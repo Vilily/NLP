@@ -39,7 +39,7 @@ def pad_sents(sents, pad_token):
         if(longest < len(sents[i])):
             longest = len(sents[i])
     for i in range(n):
-        sents_padded[i] = sents[i] + [pad_token]*(longest - len(sents[i]))
+        sents_padded.append(sents[i] + [pad_token]*(longest - len(sents[i])))
     ### END YOUR CODE
 
     return sents_padded
