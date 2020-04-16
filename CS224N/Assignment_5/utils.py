@@ -41,9 +41,23 @@ def pad_sents_char(sents, char_pad_token):
     ###     You should NOT use the method `pad_sents()` below because of the way it handles
     ###     padding and unknown words.
 
-
+    max_sentence_length = 0
+    for lli in sents:
+        if(len(lli) > max_sentence_length):
+            max_sentence_length = len(lli)
+    sents_padded = []
+    for j in range(len(sents)):
+        lli = sents[j]
+        if(len(lli) < max_sentence_length):
+            lli = lli + [[]]*(max_sentence_length - len(lli))
+        sents[j] = lli
+        for i in range(len(lli)):
+            if(len(lli[i]) < max_word_length):
+                lli[i] = lli[i] + ([char_pad_token]*(max_word_length - len(lli[i])))
+            if(len(lli[i]) > max_word_length):
+                lli[i] = lli[i][:max_word_length]
+    sents_padded = sents
     ### END YOUR CODE
-
     return sents_padded
 
 

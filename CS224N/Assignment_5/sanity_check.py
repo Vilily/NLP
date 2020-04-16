@@ -90,6 +90,7 @@ def question_1f_sanity_check():
 
     padded_sentences = pad_sents_char(word_ids, 0)
     gold_padded_sentences = torch.load('./sanity_check_en_es_data/gold_padded_sentences.pkl')
+
     assert padded_sentences == gold_padded_sentences, "Sentence padding is incorrect: it should be:\n {} but is:\n{}".format(gold_padded_sentences, padded_sentences)
 
     print("Sanity Check Passed for Question 1f: Padding!")
@@ -184,7 +185,7 @@ def main():
 
     # Check Python & PyTorch Versions
     assert (sys.version_info >= (3, 5)), "Please update your installation of Python to version >= 3.5"
-    assert(torch.__version__ == "1.0.0"), "Please update your installation of PyTorch. You have {} and you should have version 1.0.0".format(torch.__version__)
+    assert(torch.__version__ == "1.3.1"), "Please update your installation of PyTorch. You have {} and you should have version 1.0.0".format(torch.__version__)
 
     # Seed the Random Number Generators
     seed = 1234
