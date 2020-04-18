@@ -158,8 +158,13 @@ class VocabEntry(object):
         ### TODO: 
         ###     Connect `words2charindices()` and `pad_sents_char()` which you've defined in 
         ###     previous parts
-        
-
+        word_ids = self.words2charindices(sents)
+        paded_word = pad_sents_char(word_ids) #list[list[list[int]]](batch_size, max_sentence_length, max_word_length)
+        if(device == 'cuda'):
+            sents_var = torch.tensor(paded_word).cuda()
+        else:
+            sents_var = torch.tensor(paded_word).cpu()
+        sents_var =  sents_var.permute(1, 0, 2)
         ### END YOUR CODE
 
     def to_input_tensor(self, sents: List[List[str]], device: torch.device) -> torch.Tensor:
