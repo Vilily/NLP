@@ -9,9 +9,10 @@ Sahil Chopra <schopra8@stanford.edu>
 Anand Dhoot <anandd@stanford.edu>
 Michael Hahn <mhahn2@stanford.edu>
 """
-
+import torch
 import torch.nn as nn
-
+from highway import Highway
+from cnn import CNN
 # Do not change these imports; your module names should be
 #   `CNN` in the file `cnn.py`
 #   `Highway` in the file `highway.py`
@@ -40,7 +41,14 @@ class ModelEmbeddings(nn.Module):
         ## End A4 code
 
         ### YOUR CODE HERE for part 1j
-
+        self.max_word_length = 21
+        self.embed_size = embed_size
+        self.embed_char = 50
+        self.vocab = vocab
+        
+        self.cnn = CNN(char_dim=self.embed_size)
+        self.highwayLay = Highway(input_size=self.embed_size,output_size=self.embed_size, dropout=0.3)
+        self.embeddings = nn.Embedding(num_embeddings=len(vocab.char2id), embedding_dim=self.embed_char)
 
         ### END YOUR CODE
 
@@ -59,7 +67,9 @@ class ModelEmbeddings(nn.Module):
         ## End A4 code
 
         ### YOUR CODE HERE for part 1j
-
-
+        X = self.embeddings(input)  #(sentence_length, batch_size, max_word_length, embed_char)
+        Xconv = self.cnn(X) #(sentence_length, batch_size, char_dim)
+        X = self.highwayLay(Xconv)
+        return X
         ### END YOUR CODE
 
