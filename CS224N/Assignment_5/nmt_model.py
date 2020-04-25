@@ -75,7 +75,7 @@ class NMT(nn.Module):
 
         ## A4 code
         # source_padded = self.vocab.src.to_input_tensor(source, device=self.device)   # Tensor: (src_len, b)
-        # target_padded = self.vocab.tgt.to_input_tensor(target, device=self.device)   # Tensor: (tgt_len, b)
+        target_padded = self.vocab.tgt.to_input_tensor(target, device=self.device)   # Tensor: (tgt_len, b)
 
         # enc_hiddens, dec_init_state = self.encode(source_padded, source_lengths)
         # enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
@@ -90,7 +90,13 @@ class NMT(nn.Module):
         ###     - Add `source_padded_chars` for character level padded encodings for source
         ###     - Add `target_padded_chars` for character level padded encodings for target
         ###     - Modify calls to encode() and decode() to use the character level encodings
+        source_padded_chars = self.vocab.to_input_tensor_char(source, device=self.device)   # Tensor: (max_sentence_length, batch_size, max_word_length)
+        target_padded_chars = self.vocab.to_input_tensor_char(target, device=self.device)   # Tensor: (max_sentence_length, batch_size, max_word_length)
 
+        enc_hiddens, dec_init_state = self.char(source_padded_chars, source_lengths)
+        enc_masks = self.generate_sent_masks(enc_hiddens, source_lengths)
+        combined_outputs = self.charDecoder(enc_hiddens, enc_masks, dec_init_state, target_padded_chars)
+        
 
         ### END YOUR CODE
 
