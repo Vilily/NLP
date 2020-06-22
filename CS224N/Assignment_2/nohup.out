@@ -1,4 +1,3 @@
-python: can't open file 'rn.py': [Errno 2] No such file or directory
 iter 10: 27.071659
 iter 20: 27.121060
 iter 30: 27.088950
@@ -3999,5 +3998,3 @@ iter 39970: 27.933412
 iter 39980: 27.909280
 iter 39990: 27.956084
 iter 40000: 27.881656
-sanity check: cost at convergence should be around or below 10
-training took 5123 seconds
