@@ -7,6 +7,5 @@ ufile
 requests
 tornado
 scikit-learn
-tensorflow-gpu==1.14.0
-tensorflow-hub
+pytorch
 keras==2.2.5

@@ -13,13 +13,17 @@ from vocab import Vocab, VocabEntry
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-e", "--EPOCHS", default=10, type=int, help="train epochs")
-parser.add_argument("-b", "--BATCH", default=4, type=int, help="batch size")
+parser.add_argument("-b", "--BATCH", default=64, type=int, help="batch size")
 args = parser.parse_args()
 
 
 class Main(object):
     def __init__(self):
-        self.BATCH = 64
+        self.epochs = args.EPOCHS
+        self.BATCH = args.BATCH
+        self.device = torch.device('cpu')
+        if(torch.cuda.is_available()):
+            self.device = torch.device('cuda:0')
 
     def download_data(self):
         # 下载数据
@@ -30,13 +34,9 @@ class Main(object):
         pass
 
     def deal_with_data(self):
-        # 创建字典
-        # creatDict(os.path.join(DATA_PATH, 'train.csv'))
-
-        # 加载词典model\data\input\ask_fr.dict
+        # 加载词典
         src_vocab = VocabEntry(os.path.join(DATA_PATH, 'ask_fr.dict'))
         tgt_vocab = VocabEntry(os.path.join(DATA_PATH, 'ans_fr.dict'))
-        print(len(tgt_vocab))
         self.vocab = Vocab(src_vocab, tgt_vocab)
         # 超参数
         # self.sour2id, _ = load_dict(os.path.join(DATA_PATH, 'MedicalQA/ask_fr.dict'))
@@ -75,19 +75,14 @@ class Main(object):
         learning_rate = 0.001
         # hidden size
         hidden_size = 1024
-        # epoch
-        self.epochs = 10
         # clip grad
         clip_grad = 100
         # log_every
         log_every = 10
 
         # 构造graph
-        self.model = ChatBotModel(self.BATCH, embedding_size, hidden_size, vocab=self.vocab, droprate=0.2)
+        self.model = ChatBotModel(self.BATCH, embedding_size, hidden_size, vocab=self.vocab, device=self.device, droprate=0.2)
         self.model.train()
-        self.device = torch.device('cpu')
-        if(torch.cuda.is_available()):
-            self.device = torch.device('cuda:0')
         self.model = self.model.to(device=self.device)
         # optimizer
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)

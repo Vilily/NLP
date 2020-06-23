@@ -17,7 +17,7 @@ import torch.nn.functional as F
 # print(e.sents2elmo(sents).shape)
 
 class Encoder(nn.Module):
-    def __init__(self, batch_size, embed_size, hidden_size, droprate=0.2, predict=False):
+    def __init__(self, batch_size, embed_size, hidden_size, src_vocab, droprate=0.2, predict=False):
         ''' EncoderModel
 
         @param batch_size (int): batch size
@@ -31,6 +31,7 @@ class Encoder(nn.Module):
         self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.droprate = droprate
+        self.src_vocab = src_vocab
 
         # 双向LSTM层
         self.LSTM = nn.LSTM(self.embed_size,
@@ -40,7 +41,7 @@ class Encoder(nn.Module):
                             dropout=self.droprate,
                             bidirectional=True)
         # 全连接层，2*hidden_size -> hidden_size
-        self.embedding = nn.Embedding(num_embeddings=self.embed_size, embedding_dim=self.embed_size)
+        self.embedding = nn.Embedding(num_embeddings=len(self.src_vocab), embedding_dim=self.embed_size)
         self.h_projection = nn.Linear(2*hidden_size, hidden_size, bias=False)
         self.c_projection = nn.Linear(2*hidden_size, hidden_size, bias=False)
 
@@ -52,9 +53,13 @@ class Encoder(nn.Module):
         @return (h_n, c_n): (h_n, c_n): tensor(batch, hidden_size*2)
         '''
         # 压紧数据
+        source_len_batch = source_len_batch.squeeze(dim=0)
+        print(source_len_batch)
+        print(source_len_batch.shape)
         source_padded = self.embedding(source_padded)  #tensor(batch_size, seq_len, embed_size)
-        print(source_padded.shape)
         source_padded = source_padded.permute(1, 0, -1) #tensor(seq_len, batch_size, embed_size)
+        print(source_padded)
+        print(source_padded.shape)
         inputt = pack_padded_sequence(source_padded, source_len_batch) #(seq_len, batch, embed_size)
         
 
@@ -171,7 +176,7 @@ class Decoder(nn.Module):
 
 
 class ChatBotModel(nn.Module):
-    def __init__(self, batch_size, embed_size, hidden_size, vocab, droprate=0.2):
+    def __init__(self, batch_size, embed_size, hidden_size, vocab, device, droprate=0.2):
         ''' Init ChatBotModel
 
         @param embed_size (int): Embedding size (dimensionality)
@@ -181,15 +186,12 @@ class ChatBotModel(nn.Module):
         @param dropout (float): dropout probability
         '''
         super(ChatBotModel, self).__init__()
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
-        else:
-            self.device = torch.device('cpu')
         self.batch_size = batch_size
         self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.droprate = droprate
         self.vocab = vocab
+        self.device = device
         # embed fun
         self.embed = nn.Embedding(num_embeddings=len(self.vocab.src),
                                   embedding_dim=embed_size,
@@ -198,6 +200,7 @@ class ChatBotModel(nn.Module):
         self.encoder = Encoder(batch_size=batch_size,
                                embed_size=embed_size,
                                hidden_size=hidden_size,
+                               src_vocab=self.vocab.src,
                                droprate=droprate)
         # decoder
         self.decoder = Decoder(batch_size=batch_size,
