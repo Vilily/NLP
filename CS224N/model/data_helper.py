@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*- 
 # author: Honay.King
 
+import sys
 import os
 import json
 import jieba
 import pandas as pd
 
+DATA_PATH = os.path.join(sys.path[0], 'data', 'input')
+MODEL_PATH = os.path.join(sys.path[0], 'data', 'output', 'model')
+if not os.path.exists(MODEL_PATH):
+    os.makedirs(MODEL_PATH)
 
 def load_dict(dictFile):
     ''' 加载字典
@@ -106,10 +111,22 @@ def read_data_id(data, source_vocab, target_vocab):
     source_list, source_lens, target_list, target_lens = list(), list(), list(), list()
     for ind, row in data.iterrows():
         # 将title department ask 合起来转成id作为输入
-        source, source_len = source_vocab.sent2ids(row['department'] + row['title'] + row['ask'])
+        d_source, d_source_len = source_vocab.sent2ids(row['department'])
+        d_source = [source_vocab.dep_id] + d_source
+        d_source_len += 1
+        t_source, t_source_len = source_vocab.sent2ids(row['title'])
+        t_source = [source_vocab.tit_id] + t_source
+        t_source_len += 1
+        a_source, a_source_len = source_vocab.sent2ids(row['ask'])
+        a_source = [source_vocab.ask_id] + a_source + [source_vocab.eos_id]
+        a_source_len += 2
+        source = d_source + t_source + a_source
+        source_len = d_source_len + t_source_len + a_source_len
         source_list.append(source)
         source_lens.append(source_len)
         target, target_len = target_vocab.sent2ids(row['answer'])
+        target = [target_vocab.sos_id] + target + [target_vocab.eos_id]
+        target_len += 2
         target_list.append(target)
         target_lens.append(target_len)
     return [source_list, source_lens], [target_list, target_lens]

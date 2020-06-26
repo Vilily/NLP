@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*
 import os
-# import tensorflow as tf
 import torch
-from path import DATA_PATH, MODEL_PATH
+from data_helper import DATA_PATH, MODEL_PATH
 from modelNet import ChatBotModel
 from vocab import Vocab, VocabEntry
 from data_helper import load_dict, text2id
 from modelNet import get_tensor_name
-# from flyai.framework import FlyAI
 
 
 class Prediction(object):

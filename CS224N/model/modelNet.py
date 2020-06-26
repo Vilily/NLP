@@ -19,7 +19,6 @@ import torch.nn.functional as F
 class Encoder(nn.Module):
     def __init__(self, batch_size, embed_size, hidden_size, src_vocab, droprate=0.2, predict=False):
         ''' EncoderModel
-
         @param batch_size (int): batch size
         @param embed_size (int): Embedding size (dimensionality)
         @param hidden_size (int): Hidden Size, the size of hidden states (dimensionality)
@@ -42,8 +41,8 @@ class Encoder(nn.Module):
                             bidirectional=True)
         # 全连接层，2*hidden_size -> hidden_size
         self.embedding = nn.Embedding(num_embeddings=len(self.src_vocab), embedding_dim=self.embed_size)
-        self.h_projection = nn.Linear(2*hidden_size, hidden_size, bias=False)
-        self.c_projection = nn.Linear(2*hidden_size, hidden_size, bias=False)
+        self.h_projection = nn.Linear(2 * hidden_size, hidden_size, bias=False)
+        self.c_projection = nn.Linear(2 * hidden_size, hidden_size, bias=False)
 
 
     def forward(self, source_padded, source_len_batch):
@@ -53,27 +52,21 @@ class Encoder(nn.Module):
         @return (h_n, c_n): (h_n, c_n): tensor(batch, hidden_size*2)
         '''
         # 压紧数据
-        source_len_batch = source_len_batch.squeeze(dim=0)
-        print(source_len_batch)
-        print(source_len_batch.shape)
         source_padded = self.embedding(source_padded)  #tensor(batch_size, seq_len, embed_size)
         source_padded = source_padded.permute(1, 0, -1) #tensor(seq_len, batch_size, embed_size)
-        print(source_padded)
-        print(source_padded.shape)
         inputt = pack_padded_sequence(source_padded, source_len_batch) #(seq_len, batch, embed_size)
-        
-
+        del(source_len_batch)
         # LSTM
         output, (h_n, c_n) = self.LSTM(inputt) 
         # output:tensor(seq_len, batch, hidden_size * num_directions)
         # h_n(num_layers * num_directions, batch, hidden_size)
         # c_n(num_layers * num_directions, batch, hidden_size)
-
+        output = pad_packed_sequence(output)[0]
         # 获取LSTM最后一层双向的c_n，h_n
         h_n = torch.cat((h_n[-1], h_n[-2]), dim=1) # h_n:tensor(batch, hidden_size*2)
         c_n = torch.cat((c_n[-1], c_n[-2]), dim=1) # c_n:tensor(batch, hidden_size*2)
 
-        # 经过全连接层
+        # 经过全连接
         h_n = self.h_projection(h_n) # h_n:tensor(batch, hidden_size)
         c_n = self.c_projection(c_n) # c_n:tensor(batch, hidden_size)
         return (h_n, c_n)
@@ -101,21 +94,14 @@ class Decoder(nn.Module):
         # init model
         self.LSTMCell = nn.LSTMCell(self.hidden_size,# + self.hidden_size,
                             self.hidden_size)
-        # self.LSTM = nn.LSTM(self.embed_size,
-        #                     self.hidden_size,
-        #                     num_layers=2,
-        #                     batch_first=True,
-        #                     dropout=self.droprate,
-        #                     bidirectional=True)
         self.embedding = nn.Embedding(num_embeddings=len(tgt_vocab), embedding_dim=embed_size)
         self.dropout = nn.Dropout(self.droprate)
-        self.embedding_to_hidden = nn.Linear(self.embed_size, self.hidden_size, bias=False)
-        self.out = nn.Linear(self.hidden_size, len(tgt_vocab))
+        self.embedding_to_input = nn.Linear(self.embed_size + self.hidden_size, self.hidden_size, bias=False)
+        self.out = nn.Linear(self.hidden_size, len(tgt_vocab)) #
         self.combined_output_projection = nn.Linear(hidden_size, hidden_size, bias=False)
         
     # def step(self, input, dec_state):
     #     ''' 计算decoder一个步骤的计算
-
     #     @param input (tensor): tensor(batch, embed_size + hidden_size),输入数据
     #     @param dec_state (tuple): (hidden_last, cell_last),上一步骤的输出 
     #     '''
@@ -123,7 +109,7 @@ class Decoder(nn.Module):
     #     return dec_state
 
 
-    def forward(self, hidden, target_padded, target_len_batch):
+    def forward(self, hidden, target_padded):
         ''' 句子不带_sos_带_eos_
         @param hidden (h_n, c_n): (h_n, c_n): tensor(batch, hidden_size)
         @param target_padded List[List[]]: (batch_size, seq_len)
@@ -132,16 +118,18 @@ class Decoder(nn.Module):
         # 训练
         output = []
         # 对target进行embedding
-        # hidden_last, cell_last = inputt #(h_n, c_n): tensor(batch, hidden_size)
         embedded = self.embedding(target_padded).permute(1, 0, -1)  # (batch_size, seq_len, embed_size)
-        embedded = self.embedding_to_hidden(embedded)
-        embedded = self.dropout(embedded) # (seq_len, batch_size, hidden_size)
+        # embedded = self.embedding_to_hidden(embedded)
+        # embedded = self.dropout(embedded) # (seq_len, batch_size, hidden_size)
 
         seq_len = embedded.shape[0]
+        hidden_ = hidden
         # 开始训练
         for i in range(seq_len - 1):
-            hidden = self.LSTMCell(embedded[i], hidden)
-            output_i = self.combined_output_projection(hidden[0])
+            inputt = self.embedding_to_input(torch.cat((embedded[i], hidden[1]), dim=1))
+            inputt = self.dropout(inputt)
+            hidden_ = self.LSTMCell(inputt, hidden_)
+            output_i = self.combined_output_projection(hidden_[0])
             output_i = torch.tanh(output_i)
             output.append(output_i)
         output = torch.stack(output, dim=0)
@@ -156,14 +144,18 @@ class Decoder(nn.Module):
         # 对_eos_进行embedding
         output = []
         if(self.start is None):
-            self.start = self.embedding_to_hidden(self.embedding(torch.tensor(self.tgt_vocab.sos_id, dtype=torch.long, device=self.device))).unsqueeze_(dim=0)
+            self.start = self.embedding(torch.tensor(self.tgt_vocab.sos_id, dtype=torch.long, device=self.device)).unsqueeze_(dim=0)
             # start: tensor(1, hidden_size)
-        hidden = self.LSTMCell(self.start, hidden)
-        output_i = self.combined_output_projection(hidden[0])
+        inputt = self.embedding_to_input(torch.cat((self.start, hidden[1]), dim=1))
+        inputt = self.dropout(inputt)
+        hidden_ = self.LSTMCell(inputt, hidden)
+        output_i = self.combined_output_projection(hidden_[0])
         output_i = torch.tanh(output_i)
         output.append(output_i)
         for i in range(self.max_length - 1):
-            hidden = self.LSTMCell(output_i, hidden)
+            inputt = self.embedding_to_input(torch.cat((output_i, hidden[1]), dim=1))
+            inputt = self.dropout(inputt)
+            hidden_ = self.LSTMCell(inputt, hidden_)
             output_i = self.combined_output_projection(hidden[0])
             output_i = torch.tanh(output_i)
             output.append(output_i)
@@ -193,13 +185,13 @@ class ChatBotModel(nn.Module):
         self.vocab = vocab
         self.device = device
         # embed fun
-        self.embed = nn.Embedding(num_embeddings=len(self.vocab.src),
-                                  embedding_dim=embed_size,
-                                  padding_idx=self.vocab.src.pad_id)
+        # self.embed = nn.Embedding(num_embeddings=len(self.vocab.src),
+        #                           embedding_dim=self.embed_size,
+        #                           padding_idx=self.vocab.src.pad_id)
         # encoder
-        self.encoder = Encoder(batch_size=batch_size,
-                               embed_size=embed_size,
-                               hidden_size=hidden_size,
+        self.encoder = Encoder(batch_size=self.batch_size,
+                               embed_size=self.embed_size,
+                               hidden_size=self.hidden_size,
                                src_vocab=self.vocab.src,
                                droprate=droprate)
         # decoder
@@ -212,7 +204,7 @@ class ChatBotModel(nn.Module):
 
         # model init
 
-    def forward(self, pad_targets_batch, pad_sources_batch, target_len_batch, source_len_batch):
+    def forward(self, pad_targets_batch, pad_sources_batch, source_len_batch):
         ''' 前向传播
         @param pad_sources_batch: 输入数据(文本), 已经padding, (List[List[str]]), [batch_size, seq_len]
         @param pad_targets_batch: 目标输出(id), 已padding, (List[List[str]]), [batch_size, seq_len]
@@ -222,18 +214,16 @@ class ChatBotModel(nn.Module):
         @return score: 损失分数
         '''
         # 将list转成tensor(未embed)
-        source_padded = torch.tensor(pad_sources_batch, dtype=torch.long, device=self.device)
+        source_padded = torch.tensor(pad_sources_batch, dtype=torch.int64, device=self.device)
         # self.vocab.src.to_input_tensor(pad_sources_batch, device=self.device)   # Tensor: (batch_size, seq_len)
-        source_len_batch = torch.tensor(source_len_batch, dtype=torch.long, device=self.device)
-        target_padded = torch.tensor(pad_targets_batch, dtype=torch.long, device=self.device)
-        # self.vocab.tgt.to_input_tensor(pad_targets_batch, device=self.device)   # Tensor: (batch_size, seq_len)
-        target_len_batch = torch.tensor(target_len_batch, dtype=torch.long, device=self.device)
+        source_len_batch = torch.tensor(source_len_batch, dtype=torch.int64, device=self.device, requires_grad=False)
+        target_padded = torch.tensor(pad_targets_batch, dtype=torch.int64, device=self.device)
 
         # 训练
         h_n, c_n = self.encoder(source_padded, source_len_batch)
         # h_n tensor(batch_size, seq_len)
         # c_n tensor(btach_size, seq_len)
-        output = self.decoder((h_n, c_n), target_padded, target_len_batch)
+        output = self.decoder((h_n, c_n), target_padded)
 
         # 计算loss
         target_padded = target_padded[:, 1:]
@@ -294,5 +284,3 @@ def save_model(session, path, overwrite=False):
 
 
 
-def get_tensor_name(name):
-    return name + ":0"

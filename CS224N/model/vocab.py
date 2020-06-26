@@ -4,10 +4,11 @@ import json
 import os
 
 class VocabEntry(object):
-    def __init__(self, file_path):
+    def __init__(self, file_path, isAsk=False):
         ''' 初始化字典入口类
         @param file_path: 字典路径
         '''
+        self.isAsk = isAsk
         self.text2id = None
         self.id2text = None
         self.file_path = file_path
@@ -15,10 +16,16 @@ class VocabEntry(object):
         self.unk = '_unk_'
         self.sos = '_sos_'
         self.eos = '_eos_'
+        self.dep = '_dep_'
+        self.tit = '_tit_'
+        self.ask = '_ask_'
         self.unk_id = 0
-        self.pad_id = 0#10000
-        self.sos_id = 0#20000
-        self.eos_id = 0#30000
+        self.pad_id = 1
+        self.sos_id = 2
+        self.eos_id = 3
+        self.dep_id = 4
+        self.tit_id = 5
+        self.ask_id = 6
         self.load_dict(self.file_path)
     
     def __len__(self):
@@ -39,6 +46,13 @@ class VocabEntry(object):
         @param contains(bool): 是否存在
         '''
         return word in self.text2id
+    
+    def __repr__(self):
+        """ Representation of VocabEntry to be used
+        when printing the object.
+        """
+        return 'Vocabulary[size=%d]' % len(self)
+    
 
     def load_dict(self, dictFile):
         ''' 加载字典
@@ -65,6 +79,13 @@ class VocabEntry(object):
         self.id2text[self.sos_id] = self.sos
         self.id2text[self.eos_id] = self.eos
         self.id2text[self.pad_id] = self.pad
+        if(self.isAsk is True):
+            self.text2id[self.dep] = self.dep_id
+            self.text2id[self.tit] = self.tit_id
+            self.text2id[self.ask] = self.ask_id
+            self.id2text[self.dep_id] = self.dep
+            self.id2text[self.tit_id] = self.tit
+            self.id2text[self.ask_id] = self.ask
         return self.text2id, self.id2text
 
     def id2text(self, id):
@@ -72,18 +93,6 @@ class VocabEntry(object):
     
     def text2id(self, text):
         return self.text2id[text]
-    
-    def add(self, word):
-        """ Add word to VocabEntry, if it is previously unseen.
-        @param word (str): word to add to VocabEntry
-        @return index (int): index that the word has been assigned
-        """
-        if word not in self.word2id.keys():
-            wid = self.text2id[word] = len(self)
-            self.id2text[wid] = word
-            return wid
-        else:
-            return self.text2id[word]
 
     def text2words(self, textline):
         ''' 对一句话进行分词
@@ -93,7 +102,7 @@ class VocabEntry(object):
         '''
         textline = jieba.lcut(textline)
         text_list = list()
-        text_list = [self.eos] + textline
+        text_list = textline
         text_len = len(text_list)
         return text_list, text_len
 
@@ -102,7 +111,7 @@ class VocabEntry(object):
         @param words (List[str]): 分词的list
         @return ids (List[int]): 对应id的list
         '''
-        return [self.text2id.get(w, self.unk_id) for w in words]
+        return [self.text2id.get(w, self.unk_id) for w in words] #
 
     def sent2ids(self, sents):
         ''' 将一个句子str转成 List[id]
@@ -128,6 +137,9 @@ class VocabEntry(object):
         '''
         return ''.join(self.ids2words(word_ids))
 
+    def id2word(self, wid):
+        return self.id2text.get(wid, self.unk)
+
 class Vocab(object):
     def __init__(self, src_vocab: VocabEntry, tgt_vocab: VocabEntry):
         """ Init Vocab.
@@ -138,6 +150,5 @@ class Vocab(object):
         self.tgt = tgt_vocab
 
 
-# if __name__ == '__main__':
     
 
