@@ -19,8 +19,8 @@ class VocabEntry(object):
         self.dep = '_dep_'
         self.tit = '_tit_'
         self.ask = '_ask_'
-        self.unk_id = 0
-        self.pad_id = 1
+        self.unk_id = 1
+        self.pad_id = 0
         self.sos_id = 2
         self.eos_id = 3
         self.dep_id = 4

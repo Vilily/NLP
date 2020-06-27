@@ -272,15 +272,6 @@ def save_model(session, path, overwrite=False):
     '''
     pass
 
-# def delete_file(path):
-#     for root, dirs, files in os.walk(path, topdown=False):
-#         for name in files:
-#             os.remove(os.path.join(root, name))
-#         for name in dirs:
-#             os.rmdir(os.path.join(root, name))\
-#         if overwrite:
-#             delete_file(path)
-#         print(path)
 
 
 

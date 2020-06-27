@@ -3,9 +3,10 @@ import argparse
 from sklearn.model_selection import train_test_split
 from data_helper import DATA_PATH, MODEL_PATH
 import pandas as pd
-from modelNet import *
+from transformer import Transformer
 from data_helper import *
 from vocab import Vocab, VocabEntry
+import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-e", "--EPOCHS", default=10, type=int, help="train epochs")
@@ -25,7 +26,7 @@ class Main(object):
         # 加载词典
         # src_vocab = VocabEntry(os.path.join(DATA_PATH, 'MedicalQA/ask_fr.dict'))
         # tgt_vocab = VocabEntry(os.path.join(DATA_PATH, 'MedicalQA/ans_fr.dict'))
-        src_vocab = VocabEntry(os.path.join(DATA_PATH, 'ask_fr.dict'), isAsk=True)
+        src_vocab = VocabEntry(os.path.join(DATA_PATH, 'ans.json'), isAsk=True)
         tgt_vocab = VocabEntry(os.path.join(DATA_PATH, 'ans.json'))
         self.vocab = Vocab(src_vocab, tgt_vocab)
         print(len(src_vocab), len(tgt_vocab))
@@ -62,8 +63,17 @@ class Main(object):
         # log_every
         log_every = 10
 
-        # 构造graph
-        self.model = ChatBotModel(self.BATCH, embedding_size, hidden_size, vocab=self.vocab, device=self.device, droprate=0.2)
+        # 模型参数
+        self.model = Transformer(device=self.device,
+                                 src_vocab_size = len(self.vocab.src),
+                                 src_max_len = 200,
+                                 tgt_vocab_size = len(self.vocab.tgt),
+                                 tgt_max_len = 200,
+                                 num_layers=3,
+                                 model_dim=512,
+                                 num_heads=8,
+                                 ffn_dim=2048,
+                                 dropout=0.2)
         #self.load_model(self.model)
         self.model = self.model.to(device=self.device)
         # optimizer
@@ -75,8 +85,10 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
+                if(len(targets_batch[0]) > 190 or len(sources_batch[0]) > 190):
+                    continue
                 # forward pass
-                example_losses = -self.model(targets_batch, sources_batch, sources_lengths)
+                example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
                 # compute loss
                 batch_loss = example_losses.sum()
                 loss = batch_loss / batch_size
@@ -89,8 +101,9 @@ class Main(object):
                 # optimize
                 optimizer.step()
                 torch.cuda.empty_cache()
-                # if train_iter % log_every == 0:
-                print('Epoch: {} | Train_iter: {} | Train Loss: {}'.format(epoch, train_iter, loss_val))
+                if train_iter % log_every == 0:
+                    print('Epoch: {} | Train_iter: {} | Train Loss: {}'.format(epoch, train_iter, loss_val))
+                # return
             # 在测试集测试
             print("--"*8+'开始测试'+'--'*8)
             self.model.eval()
@@ -101,7 +114,7 @@ class Main(object):
                     self.vocab.tgt)):
 
                     batch_size = len(targets_batch)
-                    example_losses = -self.model(targets_batch, sources_batch, sources_lengths) # (batch_size,)
+                    example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths) # (batch_size,)
                     batch_loss = example_losses.sum()
                     loss = batch_loss / batch_size
                     loss_ += loss.item()
@@ -117,7 +130,6 @@ class Main(object):
 
 if __name__ == '__main__':
     main = Main()
-    # # main.download_data()
     main.deal_with_data()
     main.train()
     exit(0)
