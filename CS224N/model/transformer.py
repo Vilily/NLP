@@ -448,7 +448,7 @@ def sequence_mask(seq):
     @mask tensor(batch_size, seq_len, seq_len): 全为1的上右三角矩阵，不包括对角线
     '''
     batch_size, seq_len = seq.size()
-    mask = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8).to(dtype=torch.bool), diagonal=1)
+    mask = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8), diagonal=1).to(dtype=torch.bool)
     mask = mask.unsqueeze(0).expand(batch_size, -1, -1) #[bathc_size, seq_len, seq_len]
     return mask
 

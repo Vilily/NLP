@@ -10,7 +10,7 @@ import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-e", "--EPOCHS", default=10, type=int, help="train epochs")
-parser.add_argument("-b", "--BATCH", default=4, type=int, help="batch size")
+parser.add_argument("-b", "--BATCH", default=16, type=int, help="batch size")
 args = parser.parse_args()
 
 
@@ -131,5 +131,5 @@ class Main(object):
 if __name__ == '__main__':
     main = Main()
     main.deal_with_data()
-    # main.train()
+    main.train()
     exit(0)
