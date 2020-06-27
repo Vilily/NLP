@@ -32,7 +32,7 @@ class Main(object):
         print(len(src_vocab), len(tgt_vocab))
         # 加载数据集
         # self.data = pd.read_csv(os.path.join(DATA_PATH, 'MedicalQA/train.csv'))
-        self.data = pd.read_csv(os.path.join(DATA_PATH, 'train.csv'))
+        self.data = pd.read_csv(os.path.join(DATA_PATH, 'test.csv'))
         # 划分训练集、测试集
         self.train_data, self.test_data = train_test_split(self.data, test_size=0.01, random_state=678, shuffle=True)
         # 计算每个epoch的batch数
@@ -83,7 +83,7 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
-                if(len(targets_batch[0]) > 290 or len(sources_batch[0]) > 190):
+                if(len(targets_batch[0]) > 197 or len(sources_batch[0]) > 297):
                     continue
                 # forward pass
                 example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
@@ -110,7 +110,7 @@ class Main(object):
                 for test_iter, (targets_batch_test, sources_batch_test, targets_lengths, sources_lengths_test) in enumerate(get_batches(
                     self.target_test, self.source_test, args.BATCH, self.vocab.src,
                     self.vocab.tgt)):
-                    if(len(targets_batch_test[0]) > 298 or len(sources_batch_test[0]) > 198):
+                    if(len(targets_batch_test[0]) > 197 or len(sources_batch_test[0]) > 297):
                         continue
                     batch_size = len(targets_batch)
                     example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths) # (batch_size,)
