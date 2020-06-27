@@ -83,7 +83,7 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
-                if(len(targets_batch[0]) > 298 or len(sources_batch[0]) > 198):
+                if(len(targets_batch[0]) > 290 or len(sources_batch[0]) > 190):
                     continue
                 # forward pass
                 example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
