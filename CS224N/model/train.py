@@ -64,9 +64,9 @@ class Main(object):
         # 模型参数
         self.model = Transformer(device=self.device,
                                  src_vocab_size = len(self.vocab.src),
-                                 src_max_len = 300,
+                                 src_max_len = 400,
                                  tgt_vocab_size = len(self.vocab.tgt),
-                                 tgt_max_len = 200,
+                                 tgt_max_len = 300,
                                  num_layers=3,
                                  model_dim=model_dim,
                                  num_heads=8,
@@ -83,7 +83,7 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
-                if(len(targets_batch[0]) > 197 or len(sources_batch[0]) > 297):
+                if(len(targets_batch[0]) > 297 or len(sources_batch[0]) > 397):
                     continue
                 # forward pass
                 example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
@@ -107,10 +107,10 @@ class Main(object):
             self.model.eval()
             with torch.no_grad():
                 loss_ = 0
-                for test_iter, (targets_batch_test, sources_batch_test, targets_lengths, sources_lengths_test) in enumerate(get_batches(
+                for test_iter, (targets_batch, sources_batch, targets_lengths, sources_lengths) in enumerate(get_batches(
                     self.target_test, self.source_test, args.BATCH, self.vocab.src,
                     self.vocab.tgt)):
-                    if(len(targets_batch_test[0]) > 197 or len(sources_batch_test[0]) > 297):
+                    if(len(targets_batch[0]) > 297 or len(sources_batch[0]) > 397):
                         continue
                     batch_size = len(targets_batch)
                     example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths) # (batch_size,)
