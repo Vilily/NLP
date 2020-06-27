@@ -10,7 +10,7 @@ import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-e", "--EPOCHS", default=10, type=int, help="train epochs")
-parser.add_argument("-b", "--BATCH", default=16, type=int, help="batch size")
+parser.add_argument("-b", "--BATCH", default=32, type=int, help="batch size")
 args = parser.parse_args()
 
 
@@ -52,12 +52,10 @@ class Main(object):
 
     def train(self):
         decoder_vocab_size = len(self.vocab.tgt)
-        # Embedding Size
-        embedding_size = 256
         # Learning Rate
         learning_rate = 0.003
         # hidden size
-        hidden_size = 256
+        model_dim = 512
         # clip grad
         clip_grad = 2
         # log_every
@@ -66,11 +64,11 @@ class Main(object):
         # 模型参数
         self.model = Transformer(device=self.device,
                                  src_vocab_size = len(self.vocab.src),
-                                 src_max_len = 200,
+                                 src_max_len = 300,
                                  tgt_vocab_size = len(self.vocab.tgt),
                                  tgt_max_len = 200,
                                  num_layers=3,
-                                 model_dim=512,
+                                 model_dim=model_dim,
                                  num_heads=8,
                                  ffn_dim=2048,
                                  dropout=0.2)
@@ -85,7 +83,7 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
-                if(len(targets_batch[0]) > 190 or len(sources_batch[0]) > 190):
+                if(len(targets_batch[0]) > 298 or len(sources_batch[0]) > 198):
                     continue
                 # forward pass
                 example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
@@ -112,7 +110,8 @@ class Main(object):
                 for test_iter, (targets_batch_test, sources_batch_test, targets_lengths, sources_lengths_test) in enumerate(get_batches(
                     self.target_test, self.source_test, args.BATCH, self.vocab.src,
                     self.vocab.tgt)):
-
+                    if(len(targets_batch_test[0]) > 298 or len(sources_batch_test[0]) > 198):
+                        continue
                     batch_size = len(targets_batch)
                     example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths) # (batch_size,)
                     batch_loss = example_losses.sum()
@@ -132,4 +131,3 @@ if __name__ == '__main__':
     main = Main()
     main.deal_with_data()
     main.train()
-    exit(0)
