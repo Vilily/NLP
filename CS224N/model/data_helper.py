@@ -166,7 +166,7 @@ def get_batches(targets, sources, batch_size, src_vocab, tgt_vocab):
         # paadding
         pad_sources_batch = pad_sentence_batch(source_batch, src_vocab.pad_id)
         pad_targets_batch = pad_sentence_batch(target_batch, tgt_vocab.pad_id)
-        # sort
+        # 从长到短排序
         source = zip(source_len_batch, pad_sources_batch)
         source = sorted(source, reverse=True)
         source_len_batch, pad_sources_batch = zip(*source)

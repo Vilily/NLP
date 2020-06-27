@@ -66,7 +66,9 @@ class VocabEntry(object):
         with open(dictFile, 'r', encoding='UTF-8') as df:
             dictF = json.load(df)
         self.text2id, self.id2text = dict(), dict()
-        count = 0
+        count = 4
+        if(self.isAsk is True):
+            count = 7
         for key, value in dictF.items():
             self.text2id[key] = count
             self.id2text[count] = key

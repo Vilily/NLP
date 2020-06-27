@@ -26,13 +26,13 @@ class Main(object):
         # 加载词典
         # src_vocab = VocabEntry(os.path.join(DATA_PATH, 'MedicalQA/ask_fr.dict'))
         # tgt_vocab = VocabEntry(os.path.join(DATA_PATH, 'MedicalQA/ans_fr.dict'))
-        src_vocab = VocabEntry(os.path.join(DATA_PATH, 'ans.json'), isAsk=True)
+        src_vocab = VocabEntry(os.path.join(DATA_PATH, 'ask_fr.dict'), isAsk=True)
         tgt_vocab = VocabEntry(os.path.join(DATA_PATH, 'ans.json'))
         self.vocab = Vocab(src_vocab, tgt_vocab)
         print(len(src_vocab), len(tgt_vocab))
         # 加载数据集
         # self.data = pd.read_csv(os.path.join(DATA_PATH, 'MedicalQA/train.csv'))
-        self.data = pd.read_csv(os.path.join(DATA_PATH, 'test.csv'))
+        self.data = pd.read_csv(os.path.join(DATA_PATH, 'train.csv'))
         # 划分训练集、测试集
         self.train_data, self.test_data = train_test_split(self.data, test_size=0.01, random_state=678, shuffle=True)
         # 计算每个epoch的batch数
@@ -131,5 +131,5 @@ class Main(object):
 if __name__ == '__main__':
     main = Main()
     main.deal_with_data()
-    main.train()
+    # main.train()
     exit(0)
