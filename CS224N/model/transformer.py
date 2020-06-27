@@ -326,9 +326,7 @@ class Decoder(nn.Module):
         # padding遮罩
         self_attention_padding_mask = padding_mask(inputs, inputs) #(batch_size, seq_len, seq_len)
         # 上下文遮罩
-        print(self_attention_padding_mask.shape)
         seq_mask = sequence_mask(inputs).cuda() #(batch_size, seq_len, seq_len)
-        print(seq_mask.shape)
         # 合并遮罩
         self_attn_mask = torch.gt((self_attention_padding_mask + seq_mask), 0).cuda() #(batch_size, seq_len, seq_len)
         self_attentions = []
@@ -450,7 +448,7 @@ def sequence_mask(seq):
     @mask tensor(batch_size, seq_len, seq_len): 全为1的上右三角矩阵，不包括对角线
     '''
     batch_size, seq_len = seq.size()
-    mask = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8), diagonal=1)
+    mask = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8).to(dtype=torch.bool), diagonal=1)
     mask = mask.unsqueeze(0).expand(batch_size, -1, -1) #[bathc_size, seq_len, seq_len]
     return mask
 
