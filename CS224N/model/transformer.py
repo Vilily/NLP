@@ -21,7 +21,13 @@ class ScaledDotProductAttention(nn.Module):
         @return attention tensor(batch_size, seq_len, seq_len)
         '''
         # Q*K
+        # print("attn_mask")
+        # print(attn_mask.shape)
+        # print("k")
+        # print(k.shape)
         attention = torch.bmm(q, k.transpose(1, 2)) #tensor (batch_size, seq_len, seq_len)
+        # print("attention")
+        # print(attention.shape)
         # 缩放 1/sqrt(dk)
         if scale:
             attention = attention * scale
@@ -87,8 +93,7 @@ class MultiHeadAttention(nn.Module):
         # masking
         if attn_mask is not None:
             attn_mask = attn_mask.repeat(num_heads, 1, 1) #(batch_size*num_heads, seq_len, seq_len)
-        
-        # dot product attention
+
         scale = (key.size(-1) * num_heads) ** -0.5 # 1/sqrt(dim_per_head * num_heads)
         context, attention = self.dot_product_attention(key, query, value, scale, attn_mask)
         # context tensor(batch_size, * num_heads, seq_len, dim_per_heads)
@@ -261,7 +266,7 @@ class DecoderLayer(nn.Module):
         @param dec_inputs tensor(batch_size, tgt_seq_len, model_dim): 目标语句的输入已padding已embeddig
         @param enc_output tensor(batch_size, src_seq_len, model_dim): encoder的output
         @param self_attn_mask tensor(batch_size, tgt_seq_len, tgt_seq_len):自注意力的padding遮罩
-        @param context_attn_mask tensor(batch_size, src_seq_len, tgt_seq_len):encoder-decoder attention的上下文遮罩
+        @param context_attn_mask tensor(batch_size, tgt_seq_len, src_seq_len):encoder-decoder attention的上下文遮罩
 
         @return dec_output tensor(batch_size, tgt_seq_len, model_dim):
         @return self_attention tensor(batch_size, tgt_seq_leb, tgt_seq_len)
@@ -273,7 +278,6 @@ class DecoderLayer(nn.Module):
         )
         # dec_output tensor(batch_size, seq_len, model_dim)
         # context_attention tensor(batch_size * num_heads, seq_len, seq_len)
-
         # encoder-decoder注意力计算
         dec_output, context_attention = self.attention(
         enc_outputs, enc_outputs, dec_output, context_attn_mask)
@@ -308,10 +312,10 @@ class Decoder(nn.Module):
 
     def forward(self, inputs, inputs_len, enc_output, context_attn_mask=None):
         ''' Decoder前向传播
-        @param inputs tensor(batch_size, seq_len):输入语句未embedding已padding
+        @param inputs tensor(batch_size, tgt_seq_len):输入语句未embedding已padding
         @param inputs_len tensor(batch_size):目标句子的长度
-        @param enc_ioutput tensor(batch_size, seq_len, model_dim):Encoder的输出output
-        @context_attn_mask tensor(batch_size, src_seq_len, tgt_seq_len):encoder-decoder attention
+        @param enc_ioutput tensor(batch_size, src_seq_len, model_dim):Encoder的输出output
+        @context_attn_mask tensor(batch_size, tgt_seq_len, src_seq_len):encoder-decoder attention
 
         @return output tensor(batch_size, tgt_seq_len, model_dim)
         @return self_attentions List[tensor(batch_size, tgt_seq_len, tgt_seq_len)]
@@ -382,7 +386,7 @@ class Transformer(nn.Module):
                                ffn_dim=ffn_dim,
                                dropout=dropout)
         self.linear = nn.Linear(model_dim, tgt_vocab_size, bias=False)
-        self.softmax = nn.LogSoftmax(dim=2)
+        self.LogSoftmax = nn.LogSoftmax(dim=2)
     
     def forward(self, src_seq, src_len, tgt_seq, tgt_len):
         ''' transformer前向传播
@@ -414,9 +418,10 @@ class Transformer(nn.Module):
         # context_attn list[(batch_size, tgt_seq_len, src_seq_len)]
         output = self.linear(output)
         # (batch_size, tgt_seq_len, vocab_size)
-        output = self.softmax(output)
+        output = self.LogSoftmax(output)
+        output = output[:, :-1,:]
         # 计算loss
-        # tgt_seq = tgt_seq[:, 1:]
+        tgt_seq = tgt_seq[:, 1:]
         # target_padded: tensor (batch, seq_len, vocab_len)
         target_masks = (tgt_seq != 0).float()
         # print(tgt_seq)
@@ -428,6 +433,48 @@ class Transformer(nn.Module):
         scores = target_gold_words_log_prob.sum(dim=1)
         # return output, enc_self_attn, dec_self_attn, context_attn
         return scores
+    
+    def predict(self, src_seq, src_len, tgt_seq):
+        ''' transformer预测
+        @param src_seq tensor(batch_size, seq_len):未embedding已padding的输入句子
+        @param src_len tensor(batch_size):输入句子每句话的长度
+        
+        @return output tensor()
+        '''
+        # 将list转成tensor(未embed)
+        src_seq = torch.tensor(src_seq, dtype=torch.int64, device=self.device).unsqueeze(0)
+        # Encoder
+        output, enc_self_attn = self.encoder(src_seq, src_len)
+        # output tensor(batch_size, seq_len, embed_size)
+        prediction = [tgt_seq[0]]
+        tgt_seq = torch.tensor(tgt_seq, dtype=torch.int64, device=self.device).unsqueeze(0) #(1, 1)
+        tgt_len = [1]
+        index = -1
+        eos_id = 3
+        max_len = 290
+
+        while(index != eos_id and tgt_seq.shape[1] < max_len):
+            if(index != -1):
+                index_tensor = torch.tensor(index, dtype=torch.int64, device=self.device).unsqueeze(0) #(1, 1)
+                index = index.unsqueeze(0).unsqueeze(0)
+                tgt_seq = torch.cat((tgt_seq, index), dim=1) #(1, n)
+                tgt_len[0] += 1
+            # 生成上下文的mask
+            context_attn_mask = padding_mask(tgt_seq, src_seq) #(batch_size, tgt_seq_len, src_seq_len)
+            # enc_self_attn List[tensor(batch_size * num_heads, seq_len, seq_len)]
+            dec_output, dec_self_attn, context_attn = self.decoder(
+                tgt_seq, tgt_len, output, context_attn_mask
+            )
+            # output (batch_size, tgt_seq_len, model_dim)
+            # dec_self_attn list[(batch_size, tgt_seq_len, tgt_seq_len)]
+            # context_attn list[(batch_size, tgt_seq_len, src_seq_len)]
+            dec_output = self.linear(dec_output)
+            # (batch_size, tgt_seq_len, vocab_size)
+            # 取出预测的id
+            index = dec_output.max(dim=2)[1]
+            index = index[0, -1]
+            prediction.append(index.item())
+        return prediction
 
 
 def padding_mask(seq_k, seq_q):
