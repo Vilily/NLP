@@ -38,7 +38,7 @@ class Prediction(object):
                             num_heads=8,
                             ffn_dim=2048,
                             dropout=0.2)
-        # self.load_model_file(self.model)
+        self.load_model_file(self.model)
         self.model.to(self.device)
         self.model.eval()
 
