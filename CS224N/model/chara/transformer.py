@@ -386,7 +386,8 @@ class Transformer(nn.Module):
                                ffn_dim=ffn_dim,
                                dropout=dropout)
         self.linear = nn.Linear(model_dim, tgt_vocab_size, bias=False)
-        self.LogSoftmax = nn.LogSoftmax(dim=2)
+        # self.LogSoftmax = nn.LogSoftmax(dim=2)
+        self.crossLoss = nn.CrossEntropyLoss()
     
     def forward(self, src_seq, src_len, tgt_seq, tgt_len):
         ''' transformer前向传播
@@ -418,20 +419,24 @@ class Transformer(nn.Module):
         # context_attn list[(batch_size, tgt_seq_len, src_seq_len)]
         output = self.linear(output)
         # (batch_size, tgt_seq_len, vocab_size)
-        output = self.LogSoftmax(output)
-        output = output[:, :-1,:]
-        # 计算loss
+        # output = self.LogSoftmax(output)
+        output = output[:, :-1,:].permute(0, 2, 1)
+
         tgt_seq = tgt_seq[:, 1:]
-        # target_padded: tensor (batch, seq_len, vocab_len)
-        target_masks = (tgt_seq != 0).float()
-        # print(tgt_seq)
-        # print(target_masks)
-        # target_masks: tensor (batch_size, seq_len)
-        target_gold_words_log_prob = torch.gather(output, index=tgt_seq.unsqueeze(-1), dim=-1).squeeze(-1)
-        target_gold_words_log_prob = target_gold_words_log_prob * target_masks
-        # target_gold_words_log_prob: tensor (batch_size, seq_len)
-        scores = target_gold_words_log_prob.sum(dim=1)
-        # return output, enc_self_attn, dec_self_attn, context_attn
+        # (batch_size, seq_len)
+        scores = self.crossLoss(output, tgt_seq)
+        # 计算loss
+        # 
+        # # target_padded: tensor (batch, seq_len, vocab_len)
+        # target_masks = (tgt_seq != 0).float()
+        # # print(tgt_seq)
+        # # print(target_masks)
+        # # target_masks: tensor (batch_size, seq_len)
+        # target_gold_words_log_prob = torch.gather(output, index=tgt_seq.unsqueeze(-1), dim=-1).squeeze(-1)
+        # target_gold_words_log_prob = target_gold_words_log_prob * target_masks
+        # # target_gold_words_log_prob: tensor (batch_size, seq_len)
+        # scores = target_gold_words_log_prob.sum(dim=1)
+        # # return output, enc_self_attn, dec_self_attn, context_attn
         return scores
     
     def predict(self, src_seq, src_len, tgt_seq):

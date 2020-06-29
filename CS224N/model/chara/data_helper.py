@@ -7,8 +7,8 @@ import json
 import jieba
 import pandas as pd
 
-DATA_PATH = os.path.join(sys.path[0], 'data', 'input')
-MODEL_PATH = os.path.join(sys.path[0], 'data', 'output', 'model')
+DATA_PATH = os.path.join(sys.path[0], 'data')
+MODEL_PATH = os.path.join(sys.path[0], 'data')
 if not os.path.exists(MODEL_PATH):
     os.makedirs(MODEL_PATH)
 
