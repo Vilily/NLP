@@ -33,9 +33,10 @@ class ScaledDotProductAttention(nn.Module):
             attention = attention * scale
         if attn_mask is not None:
             # 将mask为1的地方设为负无穷
-            attention = attention.masked_fill_(attn_mask, -999999)
+            attention = attention.masked_fill_(attn_mask, -1e9)
         # 计算softmax
         attention = self.softmax(attention)
+        # print(attention[0][0])
         # dropout
         attention = self.dropout(attention)
         # 乘V
@@ -421,6 +422,8 @@ class Transformer(nn.Module):
         # (batch_size, tgt_seq_len, vocab_size)
         # output = self.LogSoftmax(output)
         output = output[:, :-1,:].permute(0, 2, 1)
+        # print(output.max(dim=2)[1][0])
+        # (batch_size, vocab_size, tgt_seq_len)
 
         tgt_seq = tgt_seq[:, 1:]
         # (batch_size, seq_len)
@@ -466,6 +469,7 @@ class Transformer(nn.Module):
                 tgt_len[0] += 1
             # 生成上下文的mask
             context_attn_mask = padding_mask(tgt_seq, src_seq) #(batch_size, tgt_seq_len, src_seq_len)
+            # print(context_attn_mask)
             # enc_self_attn List[tensor(batch_size * num_heads, seq_len, seq_len)]
             dec_output, dec_self_attn, context_attn = self.decoder(
                 tgt_seq, tgt_len, output, context_attn_mask
@@ -515,4 +519,29 @@ if __name__ == "__main__":
     #                         num_heads=8,
     #                         ffn_dim=2048,
     #                         dropout=0.2)
-    pass
+    a = torch.randn(3, 5, 4)
+    #(b, q, l)
+    b = torch.tensor([[1, 2, 3, 1, 1],
+                      [2, 3, 1, 1, 1],
+                      [1, 2, 1, 0, 1]])
+    softmax = nn.LogSoftmax(dim=2)
+    a_ = softmax(a)
+    print(softmax)
+    loss = 0
+    for i in range(3):
+        for j in range(5):
+            loss += a_[i, j, b[i][j]]
+    print(loss/3/5)
+    c = nn.CrossEntropyLoss()
+    loss = 0
+    for i in range(3):
+        loss += c(a[i], b[i])
+    print("loss")
+    print(loss/3)
+    a_ = a_.permute(0, 2, 1)
+    a = a.permute(0, 2, 1)
+    print(c(a, b))
+    nl = nn.NLLLoss()
+    print(nl(a_, b))
+
+    

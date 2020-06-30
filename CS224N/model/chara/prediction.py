@@ -12,7 +12,6 @@ class Prediction(object):
         ''' init
         '''
         self.BATCH = 1
-        self.model_dim = 512
         self.tgt_max_len = 300
         self.device = torch.device('cpu')
         if torch.cuda.is_available():
@@ -28,16 +27,18 @@ class Prediction(object):
         tgt_vocab = VocabEntry('data/ans_chara.json')
         self.vocab = Vocab(src_vocab, tgt_vocab)
         # 加载模型
+        num_layers = 6
+        model_dim = 512
         self.model = Transformer(device=self.device,
-                            src_vocab_size = len(self.vocab.src),
-                            src_max_len = 400,
-                            tgt_vocab_size = len(self.vocab.tgt),
-                            tgt_max_len = self.tgt_max_len,
-                            num_layers=3,
-                            model_dim=self.model_dim,
-                            num_heads=8,
-                            ffn_dim=2048,
-                            dropout=0.2)
+                                 src_vocab_size = len(self.vocab.src),
+                                 src_max_len = 252,
+                                 tgt_vocab_size = len(self.vocab.tgt),
+                                 tgt_max_len = 302,
+                                 num_layers=num_layers,
+                                 model_dim=model_dim,
+                                 num_heads=8,
+                                 ffn_dim=2048,
+                                 dropout=0.2)
         self.load_model_file(self.model)
         self.model.to(self.device)
         self.model.eval()
@@ -64,10 +65,11 @@ class Prediction(object):
         src_len = dep_len + tit_len + ask_len
         src_len = [src_len]
 
-        tgt = [self.vocab.tgt.sos_id]
+        tgt = [self.vocab.tgt.eos_id]
         predict = self.model.predict(src_x, src_len, tgt)
         # predict = predict.squeeze_().tolist()
         result_list = list()
+        print(predict)
         for item in predict:
             if item != self.vocab.tgt.unk_id:
                 result_list.append(self.vocab.tgt.id2text.get(item, self.vocab.tgt.unk))
@@ -78,12 +80,12 @@ class Prediction(object):
         torch.save(model.state_dict(), 'data/model.pkl')
     
     def load_model_file(self, model):
-        model.load_state_dict(torch.load('data/model.pkl'))
+        model.load_state_dict(torch.load('data/model-test.pkl'))
 
 
 if __name__ == "__main__":
     Pre = Prediction()
-    department = "心血管科"
-    title = "心率为72bpm是正常的吗"
-    ask = "最近不知道怎么回事总是感觉心脏不舒服..."
+    department = "肛肠"
+    title = "总是拉稀吃油腻会拉肚子怎么回事"
+    ask = "请问总是拉稀吃油腻会拉肚子怎么回事"
     print(Pre.predict(department, title, ask))

@@ -9,8 +9,8 @@ from vocab import Vocab, VocabEntry
 import torch
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-e", "--EPOCHS", default=10, type=int, help="train epochs")
-parser.add_argument("-b", "--BATCH", default=32, type=int, help="batch size")
+parser.add_argument("-e", "--EPOCHS", default=100, type=int, help="train epochs")
+parser.add_argument("-b", "--BATCH", default=4, type=int, help="batch size")
 args = parser.parse_args()
 
 
@@ -32,7 +32,7 @@ class Main(object):
         print(len(src_vocab), len(tgt_vocab))
         # 加载数据集
         # self.data = pd.read_csv(os.path.join(DATA_PATH, 'MedicalQA/train.csv'))
-        self.data = pd.read_csv('data/train.csv')
+        self.data = pd.read_csv('test.csv')
         # 划分训练集、测试集
         self.train_data, self.test_data = train_test_split(self.data, test_size=0.01, random_state=678, shuffle=True)
         # 计算每个epoch的batch数
@@ -60,19 +60,21 @@ class Main(object):
         clip_grad = 2
         # log_every
         log_every = 10
+        # num_layers
+        num_layers = 6
 
         # 模型参数
         self.model = Transformer(device=self.device,
                                  src_vocab_size = len(self.vocab.src),
-                                 src_max_len = 400,
+                                 src_max_len = 252,
                                  tgt_vocab_size = len(self.vocab.tgt),
-                                 tgt_max_len = 300,
-                                 num_layers=3,
+                                 tgt_max_len = 302,
+                                 num_layers=num_layers,
                                  model_dim=model_dim,
                                  num_heads=8,
                                  ffn_dim=2048,
                                  dropout=0.2)
-        #self.load_model(self.model)
+        self.load_model(self.model)
         self.model = self.model.to(device=self.device)
         # optimizer
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
@@ -83,13 +85,11 @@ class Main(object):
                             self.target_train, self.source_train, self.BATCH, self.vocab.src,
                             self.vocab.tgt)):
                 batch_size = len(targets_batch)
-                if(len(targets_batch[0]) > 297 or len(sources_batch[0]) > 397):
+                if(len(targets_batch[0]) >= 300 or len(sources_batch[0]) >= 250):
                     continue
                 # forward pass
-                example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
+                loss = self.model(sources_batch, sources_lengths, targets_batch, targets_lengths)
                 # compute loss
-                batch_loss = example_losses.sum()
-                loss = batch_loss / batch_size
                 loss_val = loss.item()
                 optimizer.zero_grad()
                 # backward pass
@@ -110,7 +110,7 @@ class Main(object):
                 for test_iter, (targets_batch, sources_batch, targets_lengths, sources_lengths) in enumerate(get_batches(
                     self.target_test, self.source_test, args.BATCH, self.vocab.src,
                     self.vocab.tgt)):
-                    if(len(targets_batch[0]) > 297 or len(sources_batch[0]) > 397):
+                    if(len(targets_batch[0]) >= 300 or len(sources_batch[0]) >= 250):
                         continue
                     batch_size = len(targets_batch)
                     example_losses = -self.model(sources_batch, sources_lengths, targets_batch, targets_lengths) # (batch_size,)
@@ -121,10 +121,10 @@ class Main(object):
             self.save_model(self.model)
 
     def save_model(self, model):
-        torch.save(model.state_dict(), 'data/model.pkl')
+        torch.save(model.state_dict(), 'data/model-test.pkl')
     
     def load_model(self, model):
-        model.load_state_dict(torch.load('data/model.pkl'))
+        model.load_state_dict(torch.load('data/model-test.pkl'))
 
 
 if __name__ == '__main__':
