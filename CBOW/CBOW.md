@@ -31,3 +31,10 @@ $M$：是**权值矩阵**，$M=\mathbb{R}^{|V|\times m}$
 $$\mathscr{L}=-\sum_{i}\log P(w_i|w_{j(|j-i|\le l,j\neq i)})$$
 
 $l$：是待调节的**超参数**，越大准确度越高，但训练代价越大。
+
+
+
+### Hierarchical Softmax（层次softmax）
+
+### Negative sampling（负采样）
+
