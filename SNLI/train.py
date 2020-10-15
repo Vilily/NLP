@@ -14,9 +14,10 @@ from LSTM import LSTMmodel
 
 
 if __name__ == '__main__':
-    train_data_path = 'data\snli_1.0\snli_1.0\snli_new_dev.csv'
-    test_data_path = 'data\snli_1.0\snli_1.0\snli_new_train.csv'
-    vocab_path = 'data\snli_1.0\snli_1.0\snil_vocab.txt'
+    train_data_path = 'data/snli_new_dev.csv'
+    dev_data_path = 'data/snli_new_dev.csv'
+    test_data_path = 'data/snli_new_test.csv'
+    vocab_path = 'data/snil_vocab.txt'
 
     BATCH_SIZE = 4
     max_length = 60
@@ -25,8 +26,8 @@ if __name__ == '__main__':
     n = 4
     lr = 0.0003
     epochs = None
-    output_per_epochs = 400
-    test_per_epochs = 4000
+    output_per_epochs = 4
+    test_per_epochs = 10
     # 加载字典
     vocab = Vocab(vocab_path)
     # 创建数据集
@@ -46,7 +47,7 @@ if __name__ == '__main__':
                       device=device,
                       calss_num=3,
                       batch_size=4,
-                      is_word2word=True).to(device)
+                      is_word2word=False).to(device)
     # 优化器
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=lr,

@@ -90,12 +90,12 @@ class LSTMmodel(nn.Module):
         # classfication
         if target is None:
             # predict
-            predict = torch.argmax(self.softmax(possibility, dim=1), dim=1)
+            predict = torch.argmax(self.softmax(possibility), dim=1)
             return predict
         else:
             # tarin
             target = target.long().to(device=self.device)
-            loss = self.crossLoss(h_star, target)
+            loss = self.crossLoss(possibility, target)
             return loss
 
     
@@ -133,7 +133,7 @@ class LSTMmodel(nn.Module):
             M = self.tanh(M)
             a = torch.bmm(self.w, M) # (bacth_size, 1, pre_length)
             alpha = self.attn_softmax(a).permute([0, 2, 1]) # (bacth_size, pre_length, 1)
-            r_t = torch.bmm(Y, alpha) + torch.bmm(self.W_t, r_t) # (batch_size, hidden_size, 1)
+            r_t = torch.bmm(Y, alpha) + self.tanh(torch.bmm(self.W_t, r_t)) # (batch_size, hidden_size, 1)
         return r_t
         
 
