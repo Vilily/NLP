@@ -1,0 +1,1 @@
+1.0\snli_1.0\snli_new_dev.csv', vocab)
