@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class LSTMmodel(nn.Module):
+class ESIMModel(nn.Module):
     def __init__(self, hidden_size, embedding_size, device, calss_num, batch_size=1, is_word2word=False):
         """ 初始化
         :param hidden_size: lstm隐藏层大小
@@ -9,7 +9,7 @@ class LSTMmodel(nn.Module):
         :param device: 训练设备
         :param class_num: 分类数量
         """
-        super(LSTMmodel, self).__init__()
+        super(ESIMModel, self).__init__()
         self.device = device
         self.batch_size = batch_size
         self.hidden_size = hidden_size
@@ -39,6 +39,7 @@ class LSTMmodel(nn.Module):
         # calssification
         self.classify = nn.Linear(in_features=hidden_size, out_features=calss_num, bias=True).to(device)
         self.softmax = nn.Softmax(dim=1)
+        self.logsoftmax = nn.LogSoftmax(dim=1)
         self.crossLoss = nn.CrossEntropyLoss()
 
     def forward(self, X, target=None):
@@ -50,10 +51,10 @@ class LSTMmodel(nn.Module):
         X_pre = X_pre.long().to(device=self.device) #(batch_size, pre_length)
         X_hyp = X_hyp.long().to(device=self.device) #(batch_size, hyp_length)
         # 词嵌入
-        X_pre_embed = self.embedding(X_pre) #(batch_size, pre_length, embedding_size)
-        X_hyp_embed = self.embedding(X_hyp) #(batch_size, hyp_length, embedding_size)
-        X_pre_embed = X_pre_embed.permute([1, 0, 2]) # (pre_length, batch_size, embedding_size)
-        X_hyp_embed = X_hyp_embed.permute([1, 0, 2]) # (hyp_length, batch_size, embedding_size)
+        X_pre_embed = self.embedding(X_pre) #(batch_size, premise_length, embedding_size)
+        X_hyp_embed = self.embedding(X_hyp) #(batch_size, hypothesis_length, embedding_size)
+        X_pre_embed = X_pre_embed.permute([1, 0, 2]) # (premise_length, batch_size, embedding_size)
+        X_hyp_embed = X_hyp_embed.permute([1, 0, 2]) # (hypothesis_length, batch_size, embedding_size)
         h_pre_list = [] # (pre_length, batch_size, hidden_size)
         c_pre_list = [] # (pre_length, batch_size, hidden_size)
         h_t  =self.h_0
@@ -75,15 +76,12 @@ class LSTMmodel(nn.Module):
         # Attention
         pre = (h_pre_list, c_pre_list)
         hyp = (h_hyp_list, c_hyp_list)
-
         if self.is_word2word:
             # word2word
             r = self.word2wordAttention(pre, hyp)
         else:
             # normal
-            r = self.attention(pre, hyp) #(batch_size, hidden_size, 1)
-
-        r = h_pre_list[-1].unsqueeze(dim=2)
+            r = self.attention(pre, hyp) #(batch_size, hidden_size)
         # final sentence-pair representation
         h_n = h_hyp_list[-1].unsqueeze(dim=2) #(batch_size, hidden_size, 1)
         r_ = torch.bmm(self.W_p, r) #(batch_size, hidden_size, 1)
@@ -115,8 +113,8 @@ class LSTMmodel(nn.Module):
         h_n = h_hyp_list[-1].unsqueeze(dim=2)      #(batch_size, hidden_size, 1)
         M = torch.bmm(self.W_y, Y) + torch.bmm(self.W_h, h_n) #(batch_size, hidden_size, pre_length)
         M = self.tanh(M)
-        a = torch.bmm(self.w, M).squeeze(dim=1) # (bacth_size, 1, pre_length)
-        alpha = self.attn_softmax(a).unsqueeze(dim=2) # (bacth_size, pre_length, 1)
+        a = torch.bmm(self.w, M) # (bacth_size, 1, pre_length)
+        alpha = self.attn_softmax(a).permute([0, 2, 1]) # (bacth_size, pre_length, 1)
         r = torch.bmm(Y, alpha) # (batch_size, hidden_size, 1)
         return r
 
@@ -129,7 +127,7 @@ class LSTMmodel(nn.Module):
         h_hyp_list, c_hyp_list = hyp # (hyp_length, batch_size, hidden_size)
         Y = torch.stack(h_pre_list)  # (pre_length, batch_size, hidden_size)
         Y = Y.permute([1, 2, 0])     # (batch_size, hidden_size, pre_length)
-        r_t = torch.randn([self.batch_size, self.hidden_size, 1], device=self.device)
+        r_t = torch.zeros([self.batch_size, self.hidden_size, 1], device=self.device)
         for h_t in h_hyp_list:
             h_t = h_t.unsqueeze(dim=2)
             M = torch.bmm(self.W_y, Y) + torch.bmm(self.W_h, h_t) + torch.bmm(self.W_r, r_t) #(batch_size, hidden_size, pre_length)
