@@ -1,8 +1,15 @@
+# paper: Enhanced LSTM for Natural Language Inference
+#        https://arxiv.org/abs/1609.06038
+# author: bao wenjie
+# email: bwwj_678@qq.com
+# date: 2020/10/17
+
 import torch
 import torch.nn as nn
+from vocab import Vocab
 
 class ESIMModel(nn.Module):
-    def __init__(self, hidden_size, embedding_size, device, calss_num, batch_size=1, is_word2word=False):
+    def __init__(self, hidden_size, embedding_size, device, class_num, vocab:Vocab, batch_size=1):
         """ 初始化
         :param hidden_size: lstm隐藏层大小
         :param embedding_size: 词嵌入向量大小
@@ -10,131 +17,107 @@ class ESIMModel(nn.Module):
         :param class_num: 分类数量
         """
         super(ESIMModel, self).__init__()
-        self.device = device
-        self.batch_size = batch_size
         self.hidden_size = hidden_size
-        self.is_word2word = is_word2word
-        self.lstmA = nn.LSTMCell(input_size=embedding_size,
-                                 hidden_size=hidden_size,
-                                 bias=True).to(device)
-        self.lstmB = nn.LSTMCell(input_size=embedding_size,
-                                 hidden_size=hidden_size,
-                                 bias=True).to(device)
-        self.embedding = nn.Embedding(num_embeddings=40000, embedding_dim=embedding_size).to(device)
-        self.h_0 = torch.zeros((batch_size, hidden_size), requires_grad=False, device=device)
-        self.c_0 = torch.zeros((batch_size, hidden_size), requires_grad=False, device=device)
-        # Attention
-        self.W_y = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-        self.W_h = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-        # word2word Attention
-        if is_word2word:
-            self.W_r = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-            self.W_t = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-        self.w = torch.randn(size=(batch_size, 1, hidden_size), requires_grad=True, device=device)
+        self.embedding_size = embedding_size
+        self.device = device
+        self.class_num = class_num
+        self.vocab = vocab
+        # embedding model
+        self.embedding = nn.Embedding(num_embeddings=len(vocab),
+                                      embedding_dim=embedding_size)
+        # Input Encoding
+        self.pre_lstm = nn.LSTM(input_size=embedding_size,
+                                hidden_size=hidden_size,
+                                num_layers=1,
+                                bias=True,
+                                batch_first=True,
+                                bidirectional=True)
+        self.hyp_lstm = nn.LSTM(input_size=embedding_size,
+                                hidden_size=hidden_size,
+                                num_layers=1,
+                                bias=True,
+                                batch_first=True,
+                                bidirectional=True)
+        # Local Inference Modeling
+        # Inference Composition
+        self.infer_pre_lstm = nn.LSTM(input_size=8*hidden_size,
+                                      hidden_size=hidden_size,
+                                      num_layers=1,
+                                      bias=True,
+                                      batch_first=True,
+                                      bidirectional=True)
+        self.infer_hyp_lstm = nn.LSTM(input_size=8*hidden_size,
+                                      hidden_size=hidden_size,
+                                      num_layers=1,
+                                      bias=True,
+                                      batch_first=True,
+                                      bidirectional=True)
+        self.ave_pooling = nn.AdaptiveAvgPool1d(output_size=1)
+        self.max_pooling = nn.AdaptiveAvgPool1d(output_size=1)
+        # Classify
         self.tanh = nn.Tanh()
-        self.attn_softmax = nn.Softmax(dim=1)
-        # final sentence-pair representation
-        self.W_p = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-        self.W_x = torch.randn(size=(batch_size, hidden_size, hidden_size), requires_grad=True, device=device)
-        # calssification
-        self.classify = nn.Linear(in_features=hidden_size, out_features=calss_num, bias=True).to(device)
+        self.MLP = nn.Linear(in_features=8*hidden_size,
+                             out_features=class_num)
         self.softmax = nn.Softmax(dim=1)
-        self.logsoftmax = nn.LogSoftmax(dim=1)
-        self.crossLoss = nn.CrossEntropyLoss()
-
-    def forward(self, X, target=None):
-        """ 前向传播
-        :param X(premise_size, hypothesis_size)
-        :param target int
-        """
-        X_pre, X_hyp = X
-        X_pre = X_pre.long().to(device=self.device) #(batch_size, pre_length)
-        X_hyp = X_hyp.long().to(device=self.device) #(batch_size, hyp_length)
-        # 词嵌入
-        X_pre_embed = self.embedding(X_pre) #(batch_size, premise_length, embedding_size)
-        X_hyp_embed = self.embedding(X_hyp) #(batch_size, hypothesis_length, embedding_size)
-        X_pre_embed = X_pre_embed.permute([1, 0, 2]) # (premise_length, batch_size, embedding_size)
-        X_hyp_embed = X_hyp_embed.permute([1, 0, 2]) # (hypothesis_length, batch_size, embedding_size)
-        h_pre_list = [] # (pre_length, batch_size, hidden_size)
-        c_pre_list = [] # (pre_length, batch_size, hidden_size)
-        h_t  =self.h_0
-        c_t = self.c_0
-        # premise LSTM
-        for i in range(X_pre.shape[1]):
-            x_t = X_pre_embed[i]                     # (batch_size, embedding_size)
-            (h_t, c_t) = self.lstmA(x_t, (h_t, c_t)) # (batch_size, hidde_size)
-            c_pre_list.append(c_t)
-            h_pre_list.append(h_t)
-        # hypthsis LSTM
-        c_hyp_list = [] #(hyp_length, batch_size, hidden_size)
-        h_hyp_list = [] #(hyp_length, batch_size, hidden_size)
-        for i in range(X_hyp.shape[1]):
-            x_t = X_hyp_embed[i]
-            (h_t, c_t) = self.lstmB(x_t, (h_t, c_t))
-            c_hyp_list.append(c_t)
-            h_hyp_list.append(h_t)
-        # Attention
-        pre = (h_pre_list, c_pre_list)
-        hyp = (h_hyp_list, c_hyp_list)
-        if self.is_word2word:
-            # word2word
-            r = self.word2wordAttention(pre, hyp)
-        else:
-            # normal
-            r = self.attention(pre, hyp) #(batch_size, hidden_size)
-        # final sentence-pair representation
-        h_n = h_hyp_list[-1].unsqueeze(dim=2) #(batch_size, hidden_size, 1)
-        r_ = torch.bmm(self.W_p, r) #(batch_size, hidden_size, 1)
-        h_ = torch.bmm(self.W_x, h_n) #(batch_size, hidden_size, 1)
-        h_star = self.tanh(r_ + h_).squeeze() #(batch_size, hidden_size)
-        possibility = self.classify(h_star) #(batch_size, class_num)
-        # classfication
-        if target is None:
-            # predict
-            predict = torch.argmax(self.softmax(possibility), dim=1)
-            return predict
-        else:
-            # tarin
-            target = target.long().to(device=self.device)
-            loss = self.crossLoss(possibility, target)
-            return loss
-
+        self.cross_entropy = nn.CrossEntropyLoss()
     
-    def attention(self, pre, hyp):
-        """ attention
-        :param pre (h, c): premise的LSTM结果
-        :param hyp (h, c): hypothesis的LSTM结果
-        :return r:(batch_size, hidden_size)
+    def get_hidden_state0(self, batch_size):
+        """ 获取h_0, c_0
+        :return (h_0, c_0): h_0:(batch_size, hidden_size)
         """
-        h_pre_list, c_pre_list = pre # (pre_length, batch_size, hidden_size)
-        h_hyp_list, c_hyp_list = hyp # (hyp_length, batch_size, hidden_size)
-        Y = torch.stack(h_pre_list)  # (pre_length, batch_size, hidden_size)
-        Y = Y.permute([1, 2, 0])     # (batch_size, hidden_size, pre_length)
-        h_n = h_hyp_list[-1].unsqueeze(dim=2)      #(batch_size, hidden_size, 1)
-        M = torch.bmm(self.W_y, Y) + torch.bmm(self.W_h, h_n) #(batch_size, hidden_size, pre_length)
-        M = self.tanh(M)
-        a = torch.bmm(self.w, M) # (bacth_size, 1, pre_length)
-        alpha = self.attn_softmax(a).permute([0, 2, 1]) # (bacth_size, pre_length, 1)
-        r = torch.bmm(Y, alpha) # (batch_size, hidden_size, 1)
-        return r
+        return (torch.zeros(size=(batch_size, self.hidden_size), device=self.device, requires_grad=False),
+                torch.zeros(size=(batch_size, self.hidden_size), device=self.device, requires_grad=False))
 
-    def word2wordAttention(self, pre, hyp):
-        """ 单词水平的attention
-        :param pre (pre_h, pre_c): premise的LSTM结果
-        :param hyp (hyp_h, hyp_c): hypothesis的LSTM结果
+    def forward(self, data, target=None):
+        """ 前向传播
+        :data (pre_data, hyp_data):训练数据,pre_data:(batch_size, pre_length), 
+                                           hyp_data:(batch_size, hyp_length)
+        :target :目标label, (batch_size)
         """
-        h_pre_list, c_pre_list = pre # (pre_length, batch_size, hidden_size)
-        h_hyp_list, c_hyp_list = hyp # (hyp_length, batch_size, hidden_size)
-        Y = torch.stack(h_pre_list)  # (pre_length, batch_size, hidden_size)
-        Y = Y.permute([1, 2, 0])     # (batch_size, hidden_size, pre_length)
-        r_t = torch.zeros([self.batch_size, self.hidden_size, 1], device=self.device)
-        for h_t in h_hyp_list:
-            h_t = h_t.unsqueeze(dim=2)
-            M = torch.bmm(self.W_y, Y) + torch.bmm(self.W_h, h_t) + torch.bmm(self.W_r, r_t) #(batch_size, hidden_size, pre_length)
-            M = self.tanh(M)
-            a = torch.bmm(self.w, M) # (bacth_size, 1, pre_length)
-            alpha = self.attn_softmax(a).permute([0, 2, 1]) # (bacth_size, pre_length, 1)
-            r_t = torch.bmm(Y, alpha) + self.tanh(torch.bmm(self.W_t, r_t)) # (batch_size, hidden_size, 1)
-        return r_t
-        
-
+        pre_data, hyp_data = data
+        pre_data = pre_data.long().to(self.device) # (batch_size, pre_length)
+        hyp_data = hyp_data.long().to(self.device) # (batch_size, hyp_length)
+        # Embedding 
+        pre_embedding = self.embedding(pre_data) # (batch_size, pre_length, embedding_size)
+        hyp_embedding = self.embedding(hyp_data) # (batch_size, hyp_length, embedding_size)
+        # Input Encoding
+        pre_hidden, _ = self.pre_lstm(pre_embedding) # (batch_size, pre_length, 2*hidden_size)
+        hyp_hidden, _ = self.hyp_lstm(hyp_embedding) # (batch_size, hyp_length, 2*hidden_size)
+        # Local Inference Modeling
+        E = torch.matmul(pre_hidden, hyp_hidden.permute([0, 2, 1])) # (batch_size, pre_lengthm hyp_length)
+        E = torch.exp(E)
+        E_hyp = torch.mul(E.unsqueeze(dim=3), torch.unsqueeze(hyp_hidden, dim=2)) # (batch_size, pre_length, hyp_length, 2*hidden_size)
+        E_pre = torch.mul(E.permute([0, 2, 1]).unsqueeze(dim=3), torch.unsqueeze(pre_hidden, dim=2)) # (batch_size, hyp_length, pre_length, 2*hidden_size)
+        a_tilde = torch.sum(E_hyp, dim=2) / torch.sum(E, dim=2).unsqueeze(dim=2) # (batch_size, pre_length, 2*hidden_size)
+        b_tilde = torch.sum(E_pre, dim=2) / torch.sum(E, dim=1).unsqueeze(dim=2) # (batch_size, hyp_length, 2*hidden_size)
+        a_third = pre_hidden - a_tilde
+        b_third = hyp_hidden - b_tilde
+        a_forth = torch.mul(pre_hidden, a_tilde)
+        b_forth = torch.mul(hyp_hidden, b_tilde)
+        m_a = torch.cat((pre_hidden, a_tilde, a_third, a_forth), dim=2) # (batch_size, pre_length, 4*hidden_size)
+        m_b = torch.cat((hyp_hidden, b_tilde, b_third, b_forth), dim=2) # (barch_size, hyp_length, 4*hidden_size)
+        # Inference Composition
+        v_pre, _ = self.infer_pre_lstm(m_a) # (batch_size, pre_length, hidden_size)
+        v_hyp, _ = self.infer_hyp_lstm(m_b) # (batch_size, hyp_length, hidden_size)
+        v_pre = v_pre.permute([0, 2, 1]) # (batch_size, hidden_size, pre_length)
+        v_hyp = v_hyp.permute([0, 2, 1]) # (batch_size, hidden_size, hyp_length)
+        v_pre_ave = self.ave_pooling(v_pre) # (batch, hidden_size)
+        v_hyp_ave = self.ave_pooling(v_hyp) # ...
+        v_pre_max = self.max_pooling(v_pre) # ...
+        v_hyp_max = self.max_pooling(v_hyp) # ...
+        v = torch.cat((v_pre_ave, v_pre_max, v_hyp_ave, v_pre_max), dim=1) # (batch_size, 4*hidden_size, 1)
+        v = v.squeeze(dim=2)
+        # Classify
+        v_1 = self.tanh(v)
+        v_2 = self.MLP(v_1) # (batch_size, class_num)
+        # Output
+        if target is None:
+            # Predict
+            y = self.softmax(v_2) # (batch_size, class_num)
+            y = torch.argmax(y, dim=1)
+            return y
+        else:
+            # Train
+            target = target.long().to(self.device)
+            loss = self.cross_entropy(v_2, target)
+            return loss
