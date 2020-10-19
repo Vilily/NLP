@@ -84,33 +84,26 @@ class Vocab():
     def __getitem__(self, word):
         return self.vocab.get(word, self._pad_)
     
-    def sents2indexs(self, sents, max_length=None):
+    def sents2indexs(self, sents):
         """ 句子转index
         :param sents ([str])
-        :param max_length (int): 句子padding的长度
         :return indexs ndarray(n, max_length)
         """
         indexs = []
+        lengths = []
         for sent in sents:
-            indexs.append(self.sent2index(sent, max_length))
-        return indexs
+            index, length = self.sent2index(sent)
+            indexs.append(index)
+            lengths.append(length)
+        return (indexs, lengths)
     
-    def sent2index(self, sent:str, max_length=None):
+    def sent2index(self, sent:str):
         """ sent(str) 转 ndarray(max_length)
         """
-        if max_length is None:
-            # 不padding
-            sent = [self.__getitem__(word) for word in sent.split()]
-        else:
-            # padding
-            sent = sent.split()
-            if (len(sent) > self.max_l):
-                self.max_l = len(sent)
-            if len(sent) > max_length:
-                sent = [self.__getitem__(word) for word in sent[:max_length]]  
-            else:
-                sent = [self.__getitem__(word) for word in sent] + [self._pad_]* (max_length - len(sent))
-        return sent
+        sent = sent.split()
+        sent = [self.__getitem__(word) for word in sent]
+        length = len(sent)
+        return (sent,length)
 
 
 class DataSet(Dataset):
@@ -120,11 +113,13 @@ class DataSet(Dataset):
         self.data_Y = None
         self.data_X_1 = None
         self.data_X_2 = None
+        self.length_X_1 = None
+        self.length_X_2 = None
         self.load_data(path, max_length)
 
     def __getitem__(self, index):
-        return (torch.tensor(self.data_X_1[index]), torch.tensor(self.data_X_2[index]), torch.tensor(self.data_Y[index]))
-
+        return (self.data_X_1[index], self.length_X_1[index], self.data_X_2[index], self.length_X_2[index], self.data_Y[index])
+        
     def __len__(self):
         return len(self.data_Y)
 
@@ -144,9 +139,9 @@ class DataSet(Dataset):
         data_X_1 = data['sentence1'].values
         data_X_2 = data['sentence2'].values
         # word映射到int
-        self.data_X_1 = self.vocab.sents2indexs(data_X_1, max_length)
-        self.data_X_2 = self.vocab.sents2indexs(data_X_2, max_length)
-        return (self.data_X_1, self.data_X_2, self.data_Y)
+        self.data_X_1, self.length_X_1 = self.vocab.sents2indexs(data_X_1)
+        self.data_X_2, self.length_X_2 = self.vocab.sents2indexs(data_X_2)
+        return (self.data_X_1, self.length_X_1, self.data_X_2, self.length_X_2 ,self.data_Y)
         
 
 

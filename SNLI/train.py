@@ -5,6 +5,10 @@
 '''
 import pandas as pd
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_sequence
+from torch.nn.utils.rnn import pad_sequence
 from vocab import DataSet
 import numpy as np
 import torch
@@ -19,13 +23,13 @@ if __name__ == '__main__':
     test_data_path = 'data/snli_new_test.csv'
     vocab_path = 'data/snil_vocab.txt'
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
     max_length = 60
     embedding_size = 256
-    hidden_size = 256
+    hidden_size = 512
     lr = 0.001
-    output_per_epochs = 40
-    test_per_epochs = 40
+    output_per_epochs = 100
+    test_per_epochs = 300
     # 加载字典
     vocab = Vocab(vocab_path)
     # 创建数据集
@@ -44,7 +48,6 @@ if __name__ == '__main__':
                       embedding_size=embedding_size,
                       device=device,
                       calss_num=3,
-                      batch_size=BATCH_SIZE,
                       is_word2word=False).to(device)
     # 优化器
     optimizer = torch.optim.Adam(model.parameters(),
@@ -55,20 +58,20 @@ if __name__ == '__main__':
         print('='*8 + '开始训练' + '='*8)
         model.train()
         loss_sum = 0
-        for epoch, data_ in enumerate(train_data_loader):
-
-            sent_pre, sent_hyp, target = data_ 
+        for epoch, data in enumerate(train_data_loader):
+            pre_X, pre_length, hyp_X, hyp_length, Y = data
+            pre_X = pad_sequence(pre_X)
+            hyp_X = pad_sequence(hyp_X)
             # tensor(batch_size, pre_length) 
             # tensor(batch_size, hyp_length) 
             # tensor(batch_size) 
             optimizer.zero_grad()
-            loss = model((sent_pre, sent_hyp), target)
+            loss = model(((pre_X, pre_length), (hyp_X, hyp_length)), Y)
             loss.backward()
             optimizer.step()
             loss_sum += loss.detach()
             # 打印训练情况
             if((epoch + 1) % output_per_epochs == 0):
-                # print(model.W_r.grad)
                 print('itor: {}: epoch: {}  loss: {}'.format(i + 1, epoch + 1, loss_sum / output_per_epochs))
                 loss_sum = 0
             ############################### 测试 ######################################
@@ -77,14 +80,14 @@ if __name__ == '__main__':
                 with torch.no_grad():
                     accuracy = 0
                     model.eval()
-                    for epoch, data_ in enumerate(test_data_loader):
-                        sent_pre, sent_hyp, target = data_ # input_data([[sent1], [sent2]]) target
+                    for epoch, data in enumerate(test_data_loader):
+                        pre_X, pre_length, hyp_X, hyp_length, target = data
+                        pre_X = pad_sequence(pre_X)
+                        hyp_X = pad_sequence(hyp_X)
                         target = target.long().to(device=device)
-                        y = model((sent_pre, sent_hyp)).detach()
-                        # print(y.shape, target.shape)
+                        y = model(((pre_X, pre_length), (hyp_X, hyp_length))).detach()
                         accuracy += torch.sum(y == target).cpu()
                     print('正确个数:{}, 总数:{}, 测试结果accu: {}'.format(accuracy, len(test_data_set), float(accuracy) / len(test_data_set)))
                     torch.save(model.state_dict(), 'output/lstm_model.pkl')
-                    # print(model.lstm1.weight_hh)
                 model.train()
 
