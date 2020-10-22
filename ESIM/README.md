@@ -56,3 +56,11 @@
 * **softmax**
 * **cross-entropy**
 
+
+
+
+
+## Train
+
+* 
+* 

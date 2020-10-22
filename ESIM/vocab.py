@@ -1,7 +1,9 @@
 import pandas as pd
 from torch.utils.data import Dataset, TensorDataset
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch
 import numpy as np
+import torchtext.vocab as vocab
 
 def generate_vocab(path, vocab_save_path):
     """ 生成字典
@@ -16,17 +18,17 @@ def generate_vocab(path, vocab_save_path):
                 s = '_pad_'
             words = s.split()
             for word in words:
-                vocab.add(word)
+                stoi.add(word)
             s = itor['sentence2']
             if not isinstance(s, str):
                 s = '_pad_'
             words = s.split()
             for word in words:
-                vocab.add(word)
+                stoi.add(word)
     # 保存单词表
-    vocab.discard('_pad_')
+    stoi.discard('_pad_')
     with open(vocab_save_path, mode='w+', encoding='ascii') as file:
-        for word in vocab:
+        for word in stoi:
             file.write(word + '\n')
 
 def clear_data(path, save_path):
@@ -56,11 +58,11 @@ def clear_data(path, save_path):
 class Vocab():
     def __init__(self, vocab_path):
         super().__init__()
-        self.vocab = {}
+        self._stoi = {}
+        self._itos = {}
         self._pad_ = 0
-        self._gap_ = 1
-        self.vocab['_pad_'] = self._pad_
-        self.vocab['::'] = self._gap_
+        self._stoi['_pad_'] = self._pad_
+        self._itos[self._pad_] = '_pad_'
         self.load_file(path=vocab_path)
         self.max_l = 0
 
@@ -73,62 +75,77 @@ class Vocab():
         begin = 2
         for word in data:
             word = word.strip()
-            if word not in self.vocab:
-                self.vocab[word] = begin
+            if word not in self._stoi:
+                self._stoi[word] = begin
+                self._itos[begin] = word
                 begin += 1
-        return self.vocab
+        return self._stoi
     
     def __len__(self):
-        return len(self.vocab)
+        return len(self._stoi)
     
     def __getitem__(self, word):
-        return self.vocab.get(word, self._pad_)
+        """
+        根据word查询index
+        """
+        return self._stoi.get(word, self._pad_)
     
-    def sents2indexs(self, sents, max_length=None):
+    def itos(self, index):
+        """
+        根据index查询word
+        """
+        return self._itos.get(index, None)
+    
+    def sents2indexs(self, sents, max_length):
         """ 句子转index
         :param sents ([str])
-        :param max_length (int): 句子padding的长度
         :return indexs ndarray(n, max_length)
         """
         indexs = []
+        lengths = []
         for sent in sents:
-            indexs.append(self.sent2index(sent, max_length))
-        return indexs
+            index, length = self.sent2index(sent, max_length)
+            indexs.append(index)
+            lengths.append(length)
+        return (indexs, lengths)
     
-    def sent2index(self, sent:str, max_length=None):
+    def sent2index(self, sent:str, max_length: None):
         """ sent(str) 转 ndarray(max_length)
         """
+        sent = sent.split()
+        length = len(sent)
         if max_length is None:
             # 不padding
-            sent = [self.__getitem__(word) for word in sent.split()]
+            sent = [self.__getitem__(word) for word in sent]
         else:
             # padding
-            sent = sent.split()
-            if (len(sent) > self.max_l):
-                self.max_l = len(sent)
             if len(sent) > max_length:
-                sent = [self.__getitem__(word) for word in sent[:max_length]]  
+                sent = [self.__getitem__(word) for word in sent[:max_length]]
+                length = max_length
             else:
                 sent = [self.__getitem__(word) for word in sent] + [self._pad_]* (max_length - len(sent))
-        return sent
+        return (sent, length)
 
 
 class DataSet(Dataset):
-    def __init__(self, path, vocab: Vocab, max_length=None):
+    def __init__(self, path, vocab: Vocab, max_length):
         super(DataSet, self).__init__()
         self.vocab = vocab
         self.data_Y = None
         self.data_X_1 = None
         self.data_X_2 = None
-        self.load_data(path, max_length)
+        self.length_X_1 = None
+        self.length_X_2 = None
+        self.max_length = max_length
+        self.load_data(path)
 
     def __getitem__(self, index):
-        return (torch.tensor(self.data_X_1[index]), torch.tensor(self.data_X_2[index]), torch.tensor(self.data_Y[index]))
+        return (self.data_X_1[index], self.length_X_1[index], self.data_X_2[index], self.length_X_2[index], self.data_Y[index])
 
     def __len__(self):
         return len(self.data_Y)
 
-    def load_data(self, path, max_length=None):
+    def load_data(self, path):
         ''' 加载数据
         :param path(str): 文件路径
         :param vocab(Vocab): 字典
@@ -144,15 +161,52 @@ class DataSet(Dataset):
         data_X_1 = data['sentence1'].values
         data_X_2 = data['sentence2'].values
         # word映射到int
-        self.data_X_1 = self.vocab.sents2indexs(data_X_1, max_length)
-        self.data_X_2 = self.vocab.sents2indexs(data_X_2, max_length)
-        return (self.data_X_1, self.data_X_2, self.data_Y)
+        self.data_X_1, self.length_X_1 = self.vocab.sents2indexs(data_X_1, self.max_length)
+        self.data_X_2, self.length_X_2 = self.vocab.sents2indexs(data_X_2, self.max_length)
+        return (self.data_X_1, self.length_X_1, self.data_X_2, self.length_X_2 ,self.data_Y)
         
-
-
-
+def collate_func(X):
+    """
+    :pre_X (tensor):从大到小排列的pre
+    :pre_length (tensor): pre长度
+    :hyp_X (tensor): 从大到小排列的hyp
+    :hyp_length (tensor): hyp长度
+    :Y (tensor):target和pre对应
+    :pre_indices (tensor): hyp to pre
+    """
+    pre_X = []
+    pre_length = []
+    hyp_X = []
+    hyp_length = []
+    Y = []
+    for i in X:
+        pre_X.append(i[0])
+        pre_length.append(i[1])
+        hyp_X.append(i[2])
+        hyp_length.append(i[3])
+        Y.append(i[4])
+    pre_length = torch.tensor(pre_length)
+    pre_X = torch.tensor(pre_X)
+    hyp_X = torch.tensor(hyp_X)
+    hyp_length = torch.tensor(hyp_length)
+    Y = torch.tensor(Y)
+    # Hypothsis Sort
+    hyp_length, hyp_indices = torch.sort(hyp_length, descending=True)
+    hyp_X = hyp_X[hyp_indices]
+    pre_X = pre_X[hyp_indices]
+    pre_length = pre_length[hyp_indices]
+    Y = Y[hyp_indices]
+    # Premise Sort
+    pre_length, pre_indices = torch.sort(pre_length, descending=True)
+    pre_X = pre_X[pre_indices]
+    Y = Y[pre_indices]
+    # Pack
+    pre_X = pack_padded_sequence(pre_X, pre_length, batch_first=True)
+    hyp_X = pack_padded_sequence(hyp_X, hyp_length, batch_first=True)
+    return (pre_X, hyp_X, Y, pre_indices)
 
 if __name__ == "__main__":
+    pass
     # path = ['SNLI\data\snli_1.0\snli_1.0\snli_new_dev.csv',
     #         'SNLI\data\snli_1.0\snli_1.0\snli_new_test.csv',
     #         'SNLI\data\snli_1.0\snli_1.0\snli_new_train.csv']
@@ -160,5 +214,5 @@ if __name__ == "__main__":
     # generate_vocab(path, vocab_save_path)
     # clear_data_('SNLI\data\snli_1.0\snli_1.0\snli_1.0_train.txt', 'SNLI\data\snli_1.0\snli_1.0\snli_new_train.csv')
 
-    vocab = Vocab('SNLI\data\snli_1.0\snli_1.0\snil_vocab.txt')
-    dataset = DataSet('SNLI\data\snli_1.0\snli_1.0\snli_new_dev.csv', vocab)
+    # vocab = Vocab('SNLI\data\snli_1.0\snli_1.0\snil_vocab.txt')
+    # dataset = DataSet('SNLI\data\snli_1.0\snli_1.0\snli_new_dev.csv', vocab)

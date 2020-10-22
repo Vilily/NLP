@@ -7,6 +7,8 @@
 import torch
 import torch.nn as nn
 from vocab import Vocab
+from Embedding import EmbeddingGlove
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 class ESIMModel(nn.Module):
     def __init__(self, hidden_size, embedding_size, device, class_num, vocab:Vocab, batch_size=1):
@@ -23,8 +25,7 @@ class ESIMModel(nn.Module):
         self.class_num = class_num
         self.vocab = vocab
         # embedding model
-        self.embedding = nn.Embedding(num_embeddings=len(vocab),
-                                      embedding_dim=embedding_size)
+        self.embedding = EmbeddingGlove(vocab, cache_dir='C:/Users/WILL/NLP', embedding_size=embedding_size)
         # Input Encoding
         self.pre_lstm = nn.LSTM(input_size=embedding_size,
                                 hidden_size=hidden_size,
@@ -68,21 +69,28 @@ class ESIMModel(nn.Module):
         return (torch.zeros(size=(batch_size, self.hidden_size), device=self.device, requires_grad=False),
                 torch.zeros(size=(batch_size, self.hidden_size), device=self.device, requires_grad=False))
 
-    def forward(self, data, target=None):
+    def forward(self, pre, hyp, hyp2pre, target=None):
         """ 前向传播
-        :data (pre_data, hyp_data):训练数据,pre_data:(batch_size, pre_length), 
-                                           hyp_data:(batch_size, hyp_length)
+        :pre (pre_X, pre_length):
+        :hyp (hyp_X, hyp_length):
+        :hyp2pre
         :target :目标label, (batch_size)
         """
-        pre_data, hyp_data = data
-        pre_data = pre_data.long().to(self.device) # (batch_size, pre_length)
-        hyp_data = hyp_data.long().to(self.device) # (batch_size, hyp_length)
+        pre_data, pre_length = pre # (batch_size, pre_length)
+        hyp_data, hyp_length = hyp # (batch_size, hyp_length)
         # Embedding 
         pre_embedding = self.embedding(pre_data) # (batch_size, pre_length, embedding_size)
         hyp_embedding = self.embedding(hyp_data) # (batch_size, hyp_length, embedding_size)
+        # Pack
+        pre_pack = pack_padded_sequence(pre_embedding, pre_length, batch_first=True)
+        hyp_pack = pack_padded_sequence(hyp_embedding, hyp_length, batch_first=True)
         # Input Encoding
         pre_hidden, _ = self.pre_lstm(pre_embedding) # (batch_size, pre_length, 2*hidden_size)
         hyp_hidden, _ = self.hyp_lstm(hyp_embedding) # (batch_size, hyp_length, 2*hidden_size)
+        # Pad
+        pre_hidden, pre_hidden_length = pad_packed_sequence(pre_hidden, batch_first=True)
+        hyp_hidden, hyp_hidden_length = pad_packed_sequence(hyp_hidden, batch_first=True)
+        
         # Local Inference Modeling
         E = torch.matmul(pre_hidden, hyp_hidden.permute([0, 2, 1])) # (batch_size, pre_lengthm hyp_length)
         E = torch.exp(E)

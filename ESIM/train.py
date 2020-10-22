@@ -5,7 +5,11 @@
 '''
 import pandas as pd
 from torch.utils.data import DataLoader
-from vocab import DataSet
+from torch.nn.utils.rnn import pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_sequence
+from torch.nn.utils.rnn import pad_sequence
+from vocab import DataSet, collate_func
 import numpy as np
 import torch
 from vocab import Vocab
@@ -14,6 +18,10 @@ from ESIM import ESIMModel
 
 
 if __name__ == '__main__':
+    # 设置随机种子
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    np.random.seed(42)
     train_data_path = 'data/snli_new_train.csv'
     dev_data_path = 'data/snli_new_dev.csv'
     test_data_path = 'data/snli_new_test.csv'
@@ -23,9 +31,7 @@ if __name__ == '__main__':
     max_length = 60
     embedding_size = 512
     hidden_size = 512
-    n = 4
-    lr = 0.0003
-    epochs = None
+    lr = 3e-4
     output_per_epochs = 100
     test_per_epochs = 500
     # 加载字典
@@ -34,8 +40,8 @@ if __name__ == '__main__':
     train_data_set = DataSet(train_data_path, vocab, max_length)
     test_data_set = DataSet(test_data_path, vocab, max_length)
     # 创建加载器
-    train_data_loader = DataLoader(train_data_set, shuffle=True, batch_size=BATCH_SIZE)
-    test_data_loader = DataLoader(test_data_set, shuffle=True, batch_size=BATCH_SIZE)
+    train_data_loader = DataLoader(train_data_set, shuffle=True, batch_size=BATCH_SIZE, drop_last=True, collate_fn=collate_func)
+    test_data_loader = DataLoader(test_data_set, shuffle=True, batch_size=BATCH_SIZE, drop_last=True, collate_fn=collate_func)
     # 是否用GPU
     if torch.cuda.is_available():
         device = torch.device('cuda:0')
@@ -45,8 +51,8 @@ if __name__ == '__main__':
     model = ESIMModel(hidden_size=hidden_size,
                       embedding_size=embedding_size,
                       device=device,
-                      class_num=3,
-                      batch_size=4,
+                      calss_num=3,
+                      is_word2word=False,
                       vocab=vocab).to(device)
     # 优化器
     optimizer = torch.optim.Adam(model.parameters(),
@@ -57,13 +63,20 @@ if __name__ == '__main__':
         print('='*8 + '开始训练' + '='*8)
         model.train()
         loss_sum = 0
-        for epoch, data_ in enumerate(train_data_loader):
-            sent_pre, sent_hyp, target = data_ 
-            # tensor(batch_size, pre_length) 
-            # tensor(batch_size, hyp_length) 
-            # tensor(batch_size) 
+        for epoch, data in enumerate(train_data_loader):
+            pre_X, hyp_X, Y, hyp_2_pre = data
+            """
+            pre_X: pack的pre句子
+            pre_length: pre句子长度
+            hyp_X: pack的hyp句子
+            hyp_length: hyp句子长度
+            Y: target,和pre顺序一样
+            hyp_2_pre: hyp转pre的对应顺序
+            """
+            pre_X, pre_length = pad_packed_sequence(pre_X, batch_first=True)
+            hyp_X, hyp_length = pad_packed_sequence(hyp_X, batch_first=True)
             optimizer.zero_grad()
-            loss = model((sent_pre, sent_hyp), target)
+            loss = model(((pre_X, pre_length), (hyp_X, hyp_length)), hyp_2_pre, Y)
             loss.backward()
             optimizer.step()
             loss_sum += loss.detach()
@@ -77,14 +90,22 @@ if __name__ == '__main__':
                 with torch.no_grad():
                     accuracy = 0
                     model.eval()
-                    for epoch, data_ in enumerate(test_data_loader):
-                        sent_pre, sent_hyp, target = data_ # input_data([[sent1], [sent2]]) target
+                    for epoch, data in enumerate(test_data_loader):
+                        pre_X, hyp_X, target, hyp_2_pre = data
+                        """
+                        pre_X: pack的pre句子
+                        pre_length: pre句子长度
+                        hyp_X: pack的hyp句子
+                        hyp_length: hyp句子长度
+                        Y: target,和pre顺序一样
+                        hyp_2_pre: hyp转pre的对应顺序
+                        """
+                        pre_X, pre_length = pad_packed_sequence(pre_X, batch_first=True)
+                        hyp_X, hyp_length = pad_packed_sequence(hyp_X, batch_first=True)
                         target = target.long().to(device=device)
-                        y = model((sent_pre, sent_hyp)).detach()
-                        # print(y.shape, target.shape)
+                        y = model(((pre_X, pre_length), (hyp_X, hyp_length)), hyp_2_pre).detach()
                         accuracy += torch.sum(y == target).cpu()
                     print('正确个数:{}, 总数:{}, 测试结果accu: {}'.format(accuracy, len(test_data_set), float(accuracy) / len(test_data_set)))
                     torch.save(model.state_dict(), 'output/lstm_model.pkl')
-                    # print(model.lstm1.weight_hh)
                 model.train()
 
