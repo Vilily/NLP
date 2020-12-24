@@ -1,69 +1,77 @@
-# GloVe
+# GloVe模型:boxing_glove:
 
-### 简介
 
-**Skip-gram**和**CBOW**都是基于**窗口**的模型，无法获取全篇文章的信息，因此具有局限性。
 
-### 模型公式
+## 预训练模型:relaxed:
 
-***
 
-$$F(\pmb{w}_i,\pmb{w}_j,\pmb{\tilde{w}}_k)=\frac{P_{ik}}{P_{jk}}$$
 
-**其中**
+### 预训练模型目录
 
-$\pmb{\tilde{w}}_k\in \mathbb{R}^d$：上下文单词的编码
+| 地址                                                         | 详情                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| [glove.6B](http://nlp.stanford.edu/data/glove.6B.zip)        | [Wikipedia 2014](http://dumps.wikimedia.org/enwiki/20140102/) + [Gigaword 5](https://catalog.ldc.upenn.edu/LDC2011T07) (6B tokens, 400K vocab, uncased, 50d, 100d, 200d, & 300d vectors, 822 MB download):happy: |
+| [glove.42B.300d](http://nlp.stanford.edu/data/glove.42B.300d.zip) | Common Crawl (42B tokens, 1.9M vocab, uncased, 300d vectors, 1.75 GB download):smiley: |
+| [glove.840B.300d](http://nlp.stanford.edu/data/glove.840B.300d.zip) | Common Crawl (840B tokens, 2.2M vocab, cased, 300d vectors, 2.03 GB download):pensive: |
+| [glove.twitter.27B](http://nlp.stanford.edu/data/glove.twitter.27B.zip) | Twitter (2B tweets, 27B tokens, 1.2M vocab, uncased, 25d, 50d, 100d, & 200d vectors, 1.42 GB download):cry: |
 
-$\pmb{w}_i\in\mathbb{R}^d$：文本单词的**编码**
 
-$P_{ij}$：是单词$j$是单词$i$的**上下文**的概率，即：$P_{ij}=\frac{N_{ij}}{Ni}$
 
-$N_{ij}$：是在存在单词$i$为**上下文**的情况下，单词$j$出现的次数；
+### 模型加载​（​gensim）:key:
 
-$N_i=\sum_kN_{ik}$：是单词$i$出现的次数
+**将原数据转成Word2Vec(gensim内部格式)**
 
-$F(\cdot)$：某个函数
+~~~python
+from scipy.stats.stats import mode
+import torch
+from gensim.test.utils import datapath, get_tmpfile
+from gensim.models import KeyedVectors
+from gensim.scripts.glove2word2vec import glove2word2vec
 
-***
 
-因为单词的**向量空间**是线性的，所以：
+# 路径
+glove_file = 'glove.6B.50d.txt'
+tmp_file = "glove6B50d.txt"
 
-$$F(w_i-w_j,\tilde w_k)=\frac{P_{ik}}{P_{jk}}$$												<font color=red>（1）</font>
+# 将glove转成word2vec文件
+_ = glove2word2vec(glove_file, tmp_file)
+~~~
 
-***
 
-注意到：<font color=red>(1)</font>中$F(\cdot)$参数为**向量**，但其右边为**标量**，所以：
 
-$$F((w_i-w_j)^T\tilde w_k)=\frac{P_{ik}}{P_{jk}}$$											<font color=red>（2）</font>
+**加载模型(Word2Vec)**
 
-***
+~~~python
+# 加载模型
+model = KeyedVectors.load_word2vec_format(tmp_file)
+~~~
 
-注意到：一个**中心词**和**上下文词**是任意的，可以互换的，所以：
 
-$$F((w_i-w_j)^T\tilde w_k)=\frac{F(w_i^T\tilde w_k)}{F(w_j^T\tilde w_k)}$$									<font color=red>（3）</font>
 
-**其中**：
+**导入pytorch**:sun_with_face:
 
-$F(w_i^T\tilde w_k)=P_{ik}=\frac{X_{ik}}{Xi}$
+~~~python
+# 初始化torch的Embedding
+vocab_size = 10000
+embed_size = 100
+weight = torch.zeros(vocab_size + 1, embed_size)
+for i in range(len(model.index2word)):
+    try:
+        # word_to_idx是vocab的函数，将单词映射到index
+        index = word_to_idx[model.index2word[i]]
+    except:
+        continue
+    weight[index, :] = torch.from_numpy(model.get_vector(idx_to_word[word_to_idx[wvmodel.index2word[i]]]))
 
-***
+# 生成Embedding
+embedding = torch.nn.Embedding.from_pretrained(weight)
+~~~
 
-<font color=red>（3）</font>式的**解**为：
 
-$F=exp(\cdot)$或者$w_i^T\tilde w_k=\log{P_{ik}}=\log{X_{ik}}-\log{X_{i}}$		<font color=red>（4）</font>
 
-因为$X_i$独立于$k$，所以：
+## 项目目录
 
-$$w_i^T\tilde w_k+b_i+\tilde b_k=\log(X_{ik})$$										<font color=red>（5）</font>
+| 文件                        | 详情                     |
+| --------------------------- | ------------------------ |
+| [load_model](load_model.py) | **加载预训练模型**的代码 |
 
-***
-
-**代价函数**
-
-$$J=\sum_{i,j=1}^Vf(X_{ij})(w_i^T\tilde w_j+b_i+\tilde b_j-\log{X_{ij}})^2$$
-
-**其中**
-
-$$f(x)=\left\{ \begin{array}{**lr**} (x/x_{max})^\alpha \quad if x<x_{max} \\ \qquad 1 \qquad otherwise \end{array} \right.$$
-
-$\alpha=\frac3 4$
